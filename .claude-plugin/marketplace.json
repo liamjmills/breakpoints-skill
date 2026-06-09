@@ -1,0 +1,16 @@
+{
+  "name": "liam-skills",
+  "owner": {
+    "name": "Liam Mills"
+  },
+  "description": "Skills for building and previewing websites in Claude Code.",
+  "plugins": [
+    {
+      "name": "breakpoints",
+      "source": "./plugins/breakpoints",
+      "description": "Preview your running dev site at multiple device widths side-by-side, live-reloading as you edit.",
+      "category": "frontend",
+      "keywords": ["responsive", "preview", "breakpoints", "devices", "viewer", "frontend"]
+    }
+  ]
+}

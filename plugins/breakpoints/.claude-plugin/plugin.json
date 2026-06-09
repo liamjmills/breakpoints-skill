@@ -1,0 +1,10 @@
+{
+  "name": "breakpoints",
+  "description": "Preview your running dev site at multiple device widths side-by-side, live-reloading as you edit.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Liam Mills"
+  },
+  "license": "MIT",
+  "keywords": ["responsive", "preview", "breakpoints", "devices", "viewer"]
+}

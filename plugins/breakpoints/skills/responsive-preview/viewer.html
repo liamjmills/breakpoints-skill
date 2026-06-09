@@ -1,0 +1,1365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Responsive Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..700,0..100,0..1;1,9..144,300..700,0..100,0..1&family=Host+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
+<!-- Phosphor (Regular + Fill) line icons, CDN-loaded; degrade gracefully offline. Fill is used for the active Focus eye. -->
+<!-- html-to-image (foreignObject capture; the browser renders the page → faithful) is lazy-loaded on first Save PNG — see loadHtmlToImage() in the script below -->
+
+<style>
+  :root{
+    /* Solvd palette — the hover/selection accent is now WHITE (was yellow); on the light chrome it flips to ink via --chrome-acc */
+    --ink:#0A0A0A; --white:#FFFFFF; --yellow:#FFFFFF;
+    --g900:#171717; --g800:#262626; --g700:#404040; --g600:#525252;
+    --g500:#737373; --g400:#A8A8A8; --g300:#D4D4D4; --g200:#E0E0E0; --g50:#F9F9F9;
+    --line:#262626;
+    --ease:cubic-bezier(0.19,1,0.22,1);
+    --gap:32px;
+    --font:"Host Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --display:"Fraunces",Georgia,"Times New Roman",serif;   /* the "Breakpoints" title (splash) + toolbar wordmark */
+    --splash-bg:url("splash-bg.png"); /*SPLASH_BG_DATA*/                     /* the splash background photo, injected as a data URI */
+  }
+  /* Chrome tokens — the toolbar, EVERY dropdown (trigger + menu) and the toolbar icons share ONE shade scale
+     that shifts with the chosen background (darkest on black → mid on grey → light grey on white) and
+     cross-fades together over 0.9s. Registered via @property so the COLOUR values can animate (a plain custom
+     property can't transition). The bg-* class is mirrored onto <body> in applyBackground(). */
+  @property --chrome    { syntax:'<color>'; inherits:true; initial-value:#141414; }
+  @property --chrome-bd { syntax:'<color>'; inherits:true; initial-value:#404040; }
+  @property --chrome-fg { syntax:'<color>'; inherits:true; initial-value:#FFFFFF; }
+  @property --chrome-ic { syntax:'<color>'; inherits:true; initial-value:#E0E0E0; }
+  @property --chrome-acc{ syntax:'<color>'; inherits:true; initial-value:#FFFFFF; }
+  @property --chrome-div{ syntax:'<color>'; inherits:true; initial-value:rgba(255,255,255,.12); }
+  @property --chrome-hov{ syntax:'<color>'; inherits:true; initial-value:rgba(255,255,255,.10); }
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{ margin:0; display:flex; flex-direction:column; background:var(--ink); color:var(--g200);
+    font:400 14px/1.45 var(--font); -webkit-font-smoothing:antialiased;
+    --chrome:#141414; --chrome-bd:var(--g700); --chrome-fg:#fff; --chrome-ic:var(--g200);
+    --chrome-acc:#fff; --chrome-div:rgba(255,255,255,.12); --chrome-hov:rgba(255,255,255,.10);
+    transition:--chrome .9s ease-in-out, --chrome-bd .9s ease-in-out, --chrome-fg .9s ease-in-out,
+      --chrome-ic .9s ease-in-out, --chrome-acc .9s ease-in-out, --chrome-div .9s ease-in-out, --chrome-hov .9s ease-in-out,
+      background-color .9s ease-in-out; }   /* cross-fade the body bg too: on white it goes light so the glass toolbar doesn't pick up dark bleed */
+  body.bg-grey{ --chrome:#2D2D2D; --chrome-bd:#3A3A3A; }                          /* mid — slightly lighter than black; text/icons stay light */
+  body.bg-white{ background:#fff; --chrome:#E2E2E2; --chrome-bd:#A6A6A6; --chrome-fg:var(--ink);
+    --chrome-ic:var(--g700); --chrome-acc:var(--ink); --chrome-div:rgba(0,0,0,.14); --chrome-hov:rgba(0,0,0,.06); }   /* light grey — flip text/icons/accent to ink; white body so the glass reads light not muddy; darker border so icon/URL outlines are visible */
+
+  ::selection{ background:var(--yellow); color:var(--ink); }
+  :focus-visible{ outline:2px solid var(--yellow); outline-offset:2px; border-radius:4px; }
+
+  /* icon helper — glyph + font-family come from the Phosphor classes (ph / ph-fill / ph-<name>);
+     this only handles sizing/centering so the existing .iconbtn .msym / .fbtn .msym rules still apply. */
+  .msym{ display:inline-flex; align-items:center; justify-content:center; line-height:1;
+    font-style:normal; white-space:nowrap; user-select:none; }
+
+  /* ---------- toolbar ---------- */
+  /* The toolbar surface + border read from the --chrome-* tokens (which animate on <body>), so the whole
+     bar tints with the chosen background and cross-fades at 0.9s. Icons/dropdowns share the same tokens. */
+  #bar{ flex:0 0 auto; display:flex; align-items:center; gap:14px; padding:10px 16px;
+    background:color-mix(in srgb, var(--chrome) 82%, transparent); border-bottom:1px solid var(--chrome-bd); flex-wrap:wrap;
+    -webkit-backdrop-filter:blur(14px) saturate(1.3); backdrop-filter:blur(14px) saturate(1.3); }   /* frosted glass: translucent chrome (color-mix still tints + cross-fades with the token) over a backdrop blur */
+  #bar .left{ flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:10px; }
+  /* #home is a plain .iconbtn (house glyph) → back to the opening screen */
+  #bar .right{ flex:0 0 auto; display:flex; align-items:center; gap:10px; }
+  .lbl{ font-family:var(--mono); font-size:11px; font-weight:400; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--g400); white-space:nowrap; }
+  #url{ flex:1 1 auto; min-width:120px; max-width:640px; background:transparent; color:var(--chrome-fg);
+    border:1px solid var(--chrome-bd); border-radius:8px; padding:10px 12px; font:400 14px/1 var(--font); }
+  #url::placeholder{ color:var(--chrome-ic); }
+  /* ---------- custom dropdown (always opens DOWNWARD; the menu is portaled to <body> as
+     position:fixed, so the scaled #track and #stage's clipped overflow never shrink or cut it.
+     Replaces native <select>, which anchored its popup to the selected item — a middle pick
+     opened partly off the top of the screen — and kept a lingering yellow focus ring.) */
+  .dd{ position:relative; display:inline-flex; }
+  .dd-trigger{ display:inline-flex; align-items:center; justify-content:space-between; gap:6px;
+    background:color-mix(in srgb, var(--chrome) 80%, transparent); color:var(--chrome-fg); border:1px solid var(--chrome-bd); border-radius:8px;
+    padding:9px 10px 9px 12px; font:500 13px/1 var(--font); cursor:pointer; white-space:nowrap;
+    -webkit-backdrop-filter:blur(10px) saturate(1.3); backdrop-filter:blur(10px) saturate(1.3);
+    transition:border-color .2s var(--ease); }
+  .dd-trigger:hover, .dd.open .dd-trigger{ border-color:var(--chrome-acc); }
+  .dd-trigger .dd-label{ overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums; }   /* tabular-nums so the live zoom % doesn't jiggle as it animates */
+  .dd-trigger .dd-chev{ font-size:18px; color:var(--chrome-ic); flex:0 0 auto; transition:transform .2s cubic-bezier(.4,0,.2,1); }   /* gently eased flip */
+  .dd.open .dd-trigger .dd-chev{ transform:rotate(180deg); }
+  #bar .layoutdd .dd-trigger{ width:180px; }
+  .frame .preset .dd-trigger{ width:auto; max-width:170px; min-width:0; }   /* shade comes from --chrome (matches the toolbar), like every other dropdown. ≤170 so device names show; shrinks to ~"Custom" when narrow so the header never wraps */
+  .frame .preset{ min-width:0; }   /* let the dropdown wrapper shrink inside the flex header */
+  #bar .fitdd .dd-trigger{ width:128px; }
+  .dd-menu{ position:fixed; z-index:100; min-width:150px; background:color-mix(in srgb, var(--chrome) 80%, transparent);
+    -webkit-backdrop-filter:blur(16px) saturate(1.3); backdrop-filter:blur(16px) saturate(1.3);   /* glass: the frames behind blur through the popup */
+    border:1px solid var(--chrome-bd); border-radius:12px; padding:6px; overflow-y:auto;   /* 12 = inner .dd-opt radius 6 + 6 padding → concentric corners */
+    box-shadow:0 18px 44px rgba(0,0,0,.4); font:500 13px/1 var(--font); color:var(--chrome-fg);
+    opacity:0; transform:translateY(-6px) scale(.97); transform-origin:top center;
+    transition:opacity .16s ease-out, transform .22s var(--ease); will-change:opacity, transform; }
+  .dd-menu.in{ opacity:1; transform:translateY(0) scale(1); }   /* iOS-style open: fades + slides/scales down from the trigger; the .in class is added a frame after mount and removed (animating out) on close. The menu shares the --chrome tokens, so it matches the toolbar shade. */
+  .dd-group{ font:600 10px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase;
+    color:var(--chrome-ic); padding:9px 10px 5px; }
+  .dd-opt{ display:block; width:100%; text-align:left; background:transparent; border:0;
+    color:var(--chrome-fg); border-radius:6px; padding:8px 10px; font:500 13px/1 var(--font);
+    cursor:pointer; white-space:nowrap; }
+  .dd-opt:hover{ background:var(--chrome-hov); color:var(--chrome-fg); }
+  .dd-opt.sel{ background:var(--chrome-hov); font-weight:700; }   /* current choice — filled + bold (no colour accent needed) */
+
+  .iconbtn{ width:38px; height:38px; flex:0 0 auto; display:inline-flex; align-items:center;
+    justify-content:center; border-radius:999px; border:1px solid var(--chrome-bd);
+    background:transparent; color:var(--chrome-ic); cursor:pointer;
+    transition:color .3s var(--ease), border-color .3s var(--ease), background .3s var(--ease), opacity .3s var(--ease), transform .12s var(--ease); }   /* colour/border follow --chrome-ic/-bd, which animate on <body> over 0.9s → the icons cross-fade with the bar; transform is quick for the press */
+  .iconbtn .msym{ font-size:21px; }
+  .iconbtn:hover{ color:var(--chrome-acc); border-color:var(--chrome-acc); }
+  .iconbtn:active:not(:disabled){ transform:scale(.96); }   /* tactile press */
+  .iconbtn.toggle.on{ background:var(--chrome-acc); border-color:var(--chrome-acc); color:var(--chrome); }   /* accent fill, text = the chrome surface colour for contrast (white-on-dark / ink-on-light) */
+  .iconbtn.toggle.on:hover{ background:var(--chrome-acc); border-color:var(--chrome-acc); color:var(--chrome); }
+  .iconbtn:disabled{ opacity:.35; cursor:not-allowed; }
+  .iconbtn:disabled:hover{ color:var(--chrome-ic); border-color:var(--chrome-bd); }
+  /* "feature in progress" lock: keep the icon, dim it, draw a diagonal strike across the whole button */
+  .iconbtn.locked{ opacity:.5; cursor:not-allowed; position:relative; overflow:hidden; }
+  .iconbtn.locked::after{ content:""; position:absolute; left:50%; top:50%; width:150%; height:1.5px;
+    background:currentColor; transform:translate(-50%,-50%) rotate(-45deg); pointer-events:none; }
+
+  .divider{ flex:0 0 auto; width:1px; height:22px; background:var(--chrome-div); margin:0 3px; }   /* separators tint with the chrome (light on dark, dark on light) */
+  .zoomgrp{ display:inline-flex; align-items:center; gap:6px; transition:opacity .3s var(--ease); }
+  /* these controls are meaningless while one frame fills the stage — dim + disable them in focus
+     (zoom group, scroll-sync toggle, and Capture-All) */
+  #bar.focusmode .zoomgrp,
+  #bar.focusmode #syncbtn,
+  #bar.focusmode #shotall{ opacity:.3; pointer-events:none; transition:opacity .3s var(--ease); }
+
+  /* narrow window (VS Code side panel / split screen): stack into two deliberate rows instead of a
+     floating wrap — URL field takes the full first row, controls drop to a tidy second tier with a hairline. */
+  @media (max-width:900px){   /* 900, not the ~875px natural wrap point: engage the clean stack just BEFORE flex-wrap would drop a floating, hairline-less row */
+    #bar{ row-gap:0; }
+    #bar .left{ flex:1 1 100%; }
+    #bar .right{ flex:1 1 100%; padding-top:11px; border-top:1px solid var(--line); }
+  }
+
+  /* ---------- stage ---------- */
+  #stage{ position:relative; isolation:isolate; flex:1 1 auto; overflow-x:auto; overflow-y:hidden; padding:24px; background:#000;
+    display:flex; align-items:safe center; justify-content:safe center;
+    transition:background-color .9s ease-in-out; }   /* black default; zoom capped at full height so vertical never overflows — pan sideways only. BG cycle cross-fades over 0.9s, in sync with the chrome tokens */
+  #stage.focused{ overflow:hidden; justify-content:center; align-items:center; }   /* solo view: truly centre the single frame (non-safe centre + overflow:hidden tame the transform-scaled track's unscaled box). Clicking the surround exits (JS), with no cursor change */
+  /* Focus vignette = TWO opacity-crossfaded layers behind the frame (z-index 0 < #wrap z-index 1), so the
+     surround changes but never the frame. Using opacity (not a swapped gradient) means changing the stage
+     colour WHILE focused fades smoothly instead of flickering — a CSS gradient can't transition, an opacity
+     can. ::before is a soft LIGHT lift (black stage → gentle spotlight); ::after is a soft DARK dim
+     (grey/white → frame pops). One shows per bg; switching bg crossfades them. */
+  #stage::before, #stage::after{ content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
+    opacity:0; transition:opacity .9s ease-in-out; }   /* ease-in-out (gradual both ends), NOT the front-loaded --ease, so fades read as subtle, not a pop */
+  #stage::before{ background:radial-gradient(ellipse 75% 78% at 50% 50%, transparent 30%, rgba(255,255,255,.15) 100%); }
+  #stage::after{  background:radial-gradient(ellipse 80% 80% at 50% 50%, transparent 44%, rgba(0,0,0,.38) 100%); }
+  #stage.focused::before{ opacity:1; }                                            /* black (default bg) → light spotlight */
+  #stage.focused.bg-grey::before, #stage.focused.bg-white::before{ opacity:0; }   /* not on grey/white */
+  #stage.focused.bg-grey::after{ opacity:1; }                                     /* grey → full dark dim */
+  #stage.focused.bg-white::after{ opacity:.45; }                                  /* white → lighter dark dim */
+  #stage.bg-white{ background:#ffffff; }
+  #stage.bg-grey{ background:var(--g500); }   /* #737373 — neutral mid grey */
+
+  #wrap{ display:inline-block; overflow:visible; vertical-align:top; flex:0 0 auto; position:relative; z-index:1; }   /* overflow:visible so frame drop-shadows aren't clipped flat at the wrap edge; flex:0 0 keeps scaled content from being shrunk; z-index 1 sits above the focus dim */
+  #track{ display:flex; gap:var(--gap); transform-origin:top left; text-align:left; align-items:flex-start; }
+  /* smooth zoom: the zoom buttons add `.zsmooth` to track + wrap so the scale eases over a slow, silky
+     ease-in-out (gentle start AND end) instead of the snappy front-loaded default. resize/drag never add it,
+     so those stay instant. The pan to centre is JS-driven over the SAME duration (smoothPanToCenter) so the
+     scale and the re-centre glide together — no "snap in, then recentre" jolt. */
+  #track.zsmooth{ transition:transform .55s cubic-bezier(.65,0,.35,1); }
+  #wrap.zsmooth{ transition:width .55s cubic-bezier(.65,0,.35,1), height .55s cubic-bezier(.65,0,.35,1); }
+  /* layout swap: each frame animates on its own with a left→right stagger (--si = its column index),
+     so the set falls away and the new set slides in one-after-another instead of as a single block.
+     Drives the .frame's own transform/opacity; the 2-class selectors override the focus transition
+     during the swap; reduced-motion users get the near-instant fallback from the block below. */
+  .frame.swap-out{ transition:transform .6s cubic-bezier(.37,0,.63,1), opacity .5s ease;
+    transition-delay:calc(var(--si,0) * 75ms); transform:translateY(42px); opacity:0; }   /* gentle, slightly slower fall-away */
+  .frame.swap-in{ transition:none; transform:translateY(-42px); opacity:0; }   /* snap to the start state, no animation */
+  .frame.swap-in.swap-in-go{ transition:transform .75s var(--ease), opacity .6s ease;
+    transition-delay:calc(var(--si,0) * 110ms); transform:translateY(0); opacity:1; }   /* slower, smoother staggered entrance */
+  /* splash → tool intro: a slower, smoother version of the swap-in (own classes so the layout-swap feel is untouched) */
+  .frame.intro-in{ transition:none; transform:translateY(-54px); opacity:0; }
+  .frame.intro-in.intro-in-go{ transition:transform 1.1s cubic-bezier(.22,1,.3,1), opacity .9s ease;
+    transition-delay:calc(var(--si,0) * 150ms); transform:translateY(0); opacity:1; }
+
+  /* ---------- frame ---------- */
+  .frame{ display:flex; flex-direction:column; gap:12px; flex:0 0 auto; position:relative; transform-origin:top left; }
+  /* Focus = LIGHTBOX over a live, uniformly-blurred grid (rebuilt s9f). The whole grid is blurred + dimmed
+     in ONE pass by a single `backdrop-filter` overlay (`.focus-blur`) that sits BETWEEN the other frames
+     (below it, z<3) and the focused frame (above it, z:5). One blur pass = no per-frame edge "line"; it's the
+     LIVE grid (no snapshot → instant, no lag/gap), so on close we just fade the overlay out and the real
+     unfocused grid is right there. The focused frame FLIPs from its grid slot out to centre+fill on open and
+     settles back on close. */
+  #stage.focused .frame.focused{ z-index:5; transform-origin:center center;
+    transition:transform .5s cubic-bezier(.22,1,.3,1); }
+  .focus-blur{ position:absolute; inset:-2000px; z-index:3; pointer-events:none; opacity:0;
+    transition:opacity .42s ease; -webkit-backdrop-filter:blur(64px) brightness(.45); backdrop-filter:blur(64px) brightness(.45); }
+  .focus-blur.in{ opacity:1; }
+  .frame{ container-type:inline-size; }   /* so the header can react to THIS frame's width (e.g. drop "px" when narrow) */
+  .frame header{ display:flex; align-items:center; gap:8px; width:100%; min-height:40px; }   /* single row: device selector · (px only on Custom) … focus + shot — no title (the selector already names it) */
+  .frame .ctrl{ display:flex; align-items:center; gap:8px; flex-wrap:nowrap; flex:1 1 auto; min-width:0; }   /* nowrap: the action buttons must never drop to a 2nd line (that broke the alignment); the dropdown shrinks instead */
+  .frame .ctrl-left{ display:flex; align-items:center; gap:8px; min-width:0; flex:0 1 auto; }   /* min-width:0 lets the dropdown actually shrink */
+  .frame .ctrl-right{ display:flex; align-items:center; gap:8px; margin-left:auto; flex:0 0 auto; }   /* action buttons pinned right, never shrink */
+  @container (max-width:330px){ .frame .unit{ display:none; } }   /* once the frame is this small, drop the "px" word to claw back room (the number alone is clear) */
+  .frame .w{ width:70px; min-width:0; flex:0 1 auto; background:color-mix(in srgb, var(--chrome) 80%, transparent); color:var(--chrome-fg); border:1px solid var(--chrome-bd);
+    border-radius:8px; padding:7px 9px; font:500 13px/1 var(--mono);
+    -webkit-backdrop-filter:blur(10px) saturate(1.3); backdrop-filter:blur(10px) saturate(1.3);
+    -moz-appearance:textfield; appearance:textfield; }   /* glass to match the dropdowns; tints with the chrome tokens; no number-input spinner arrows; shown only when Custom is selected; can shrink so the header never wraps */
+  .frame .w::-webkit-outer-spin-button, .frame .w::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  .frame .unit{ font-family:var(--mono); font-size:12px; color:var(--g500); margin-right:2px; }
+
+  .fbtn{ width:34px; height:34px; flex:0 0 auto; display:inline-flex; align-items:center;
+    justify-content:center; border-radius:999px; border:1px solid var(--g700);
+    background:transparent; color:var(--g300); cursor:pointer;
+    transition:color .25s var(--ease), border-color .25s var(--ease), transform .12s var(--ease); }
+  .fbtn .msym{ font-size:19px; }
+  /* focus button = a single eye ("view this one"); turns amber + fills (ph-fill, swapped in JS) when active */
+  .fbtn:hover{ color:var(--yellow); border-color:var(--yellow); }
+  .fbtn:active{ transform:scale(.96); }   /* tactile press */
+  .fbtn.on{ background:transparent; color:var(--yellow); border-color:var(--yellow); }
+
+  .canvas{ position:relative; }
+  .frame iframe{ border:0; background:var(--white); border-radius:8px;
+    box-shadow:0 0 0 1px rgba(255,255,255,.1), 0 12px 30px rgba(0,0,0,.35); display:block; }   /* 1px hairline ring (radius-aware) defines the frame edge against the stage; white on dark, flipped to ink on the white stage below */
+
+  .grip{ position:absolute; top:0; right:-6px; width:12px; height:100%;
+    display:flex; align-items:center; justify-content:center; cursor:ew-resize; touch-action:none; }
+  .grip::before{ content:""; width:3px; height:44px; border-radius:999px;
+    background:var(--g700); transition:background .25s var(--ease), height .25s var(--ease); }
+  .grip:hover::before, .frame.resizing .grip::before{ background:var(--yellow); height:84px; }
+  /* in focus, the single frame's lone grip handle reads as a stray dark bar against the open stage
+     (the "something behind it"). Hide it until you hover the right edge — drag-resize in focus still works. */
+  .frame.focused .grip::before{ opacity:0; transition:opacity .25s var(--ease), background .25s var(--ease), height .25s var(--ease); }
+  .frame.focused .grip:hover::before, .frame.focused.resizing .grip::before{ opacity:1; }
+
+  /* on a light/checker stage, yellow is invisible — switch frame accents to ink */
+  #stage.bg-white .fbtn{ color:var(--g700); border-color:var(--g300); }
+  #stage.bg-white .fbtn:hover{ color:var(--ink); border-color:var(--ink); }
+  #stage.bg-white .fbtn.on{ color:var(--ink); border-color:var(--ink); }   /* white accent is invisible on a white stage → ink */
+  #stage.bg-white .grip:hover::before, #stage.bg-white .frame.resizing .grip::before{ background:var(--ink); }
+  #stage.bg-white .frame iframe{ box-shadow:0 0 0 1px rgba(0,0,0,.1), 0 12px 30px rgba(0,0,0,.35); }   /* on the white stage a white ring vanishes → ink hairline */
+  /* the device dropdown (trigger + menu) shares the --chrome tokens, so it tints with the toolbar — no stage-specific overrides needed */
+
+  /* toast */
+  #toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(10px);
+    background:var(--g900); color:var(--white); border:1px solid var(--g700); border-radius:999px;
+    padding:10px 18px; font:500 13px/1 var(--font); opacity:0; pointer-events:none;
+    transition:opacity .25s var(--ease), transform .25s var(--ease); z-index:50; }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* ---------- opening screen (#splash) ----------
+     A light welcome screen shown until a URL has been entered once (a saved/?url= URL skips it — see Init).
+     No toolbar: a full-viewport overlay above everything. Centred title + one-line description + a URL field
+     over a FAINT browser window whose wireframe site resizes in steps (mobile→tablet→desktop, holds between).
+     All rules scoped under #splash so the generic class names (.site/.nav/.hero/.cards/.btn…) can't touch the tool. */
+  #splash{ position:fixed; inset:0; z-index:200; display:none; flex-direction:column;
+    align-items:center; justify-content:center; overflow:hidden;
+    background:#F4F4F4 var(--splash-bg) center top / auto 135% no-repeat;   /* top-anchored + zoomed so the image's dark navy bottom runs off-screen (no dark band/line at the bottom) */
+    opacity:1; transition:opacity .4s ease; }
+  #splash.show{ display:flex; }
+  #splash.gone{ opacity:0; pointer-events:none; }   /* fade out on submit, then .show is removed (display:none)  */
+
+  #splash .bg-stage{ position:absolute; inset:0; display:flex; align-items:flex-start; justify-content:center; padding-top:70vh; }   /* push the window DOWN so it sits under the title and runs off the bottom (cut off) — budged a bit lower so it doesn't sit too neatly */
+  #splash .winchrome{ height:82vh; border-radius:12px; overflow:hidden;
+    border:1px solid rgba(255,255,255,.38); background:transparent;                                /* no white fill — outlined, lightly-frosted window over the photo */
+    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+    box-shadow:none;                                                                                /* no drop shadow — the window runs off the bottom, so its shadow only showed as a faint line across the top edge */
+    animation:splash-resize 13s infinite; animation-timing-function:cubic-bezier(.65,0,.35,1); }
+  #splash .winbar{ height:22px; background:transparent; border-bottom:1px solid rgba(255,255,255,.14); display:flex; align-items:center; gap:7px; padding:0 11px; }   /* Mac-style title bar */
+  #splash .winbar i{ width:9px; height:9px; border-radius:50%; }
+  #splash .winbar i:nth-child(1){ background:#ff5f57; }   /* close — red */
+  #splash .winbar i:nth-child(2){ background:#febc2e; }   /* minimise — yellow */
+  #splash .winbar i:nth-child(3){ background:#28c840; }   /* zoom — green */
+  #splash .site{ width:100%; height:calc(100% - 22px); display:flex; flex-direction:column; gap:10px; padding:16px; }
+  #splash .nav{ display:flex; align-items:center; gap:10px; }
+  /* wireframe shapes — translucent white fill (panels get a subtle gradient) + a soft, low-opacity white stroke → "looks white" but lets the photo through */
+  #splash .nav .logo{ width:46px; height:11px; border-radius:3px; background:rgba(255,255,255,.5); border:1px solid rgba(255,255,255,.3); }
+  #splash .nav .sp{ flex:1; }
+  #splash .nav .lnk{ width:28px; height:8px; border-radius:3px; background:rgba(255,255,255,.5); border:1px solid rgba(255,255,255,.3); }
+  #splash .hero{ height:36%; border-radius:8px; background:linear-gradient(180deg,rgba(255,255,255,.2),rgba(255,255,255,.07)); border:1px solid rgba(255,255,255,.22); display:flex; flex-direction:column;
+    justify-content:center; gap:9px; padding:20px; }
+  #splash .hero .l{ height:12px; border-radius:3px; background:rgba(255,255,255,.5); border:1px solid rgba(255,255,255,.3); }
+  #splash .hero .l.w1{ width:62%; } #splash .hero .l.w2{ width:44%; }
+  #splash .hero .btn{ width:64px; height:20px; border-radius:9px; background:rgba(255,255,255,.5); border:1px solid rgba(255,255,255,.3); margin-top:6px; }
+  #splash .cards{ display:flex; flex-wrap:wrap; gap:10px; flex:1; }   /* wraps 4→2→1 as the window narrows → the "responsive" feel */
+  #splash .cards .c{ flex:1 1 150px; min-width:110px; border-radius:8px; background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.08)); border:1px solid rgba(255,255,255,.22); min-height:54px; }
+  #splash .foot{ height:13px; border-radius:3px; background:rgba(255,255,255,.5); border:1px solid rgba(255,255,255,.3); }
+  /* snap → hold → snap. holds are flat (the two keyframes share a width); each glide is ~2s (cubic-bezier above). */
+  @keyframes splash-resize{
+    0%{ width:32%; }  16%{ width:32%; }     /* mobile, hold  */
+    32%{ width:62%; } 48%{ width:62%; }     /* tablet, hold  */
+    64%{ width:75%; } 84%{ width:75%; }     /* desktop, longest hold — caps at 75% of the width */
+    98%{ width:32%; } 100%{ width:32%; }    /* back to mobile */
+  }
+
+  /* centred content, no scrim (its soft edge was reading as a faint shadow line) */
+  #splash .frontlayer{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; text-align:center; gap:22px; padding:24px; transform:translateY(-6vh);   /* nudge the text block up a little */
+    background:none; }
+  #splash .title{ font-family:var(--display); font-weight:300; font-size:clamp(44px,9vw,86px); line-height:1;
+    font-variation-settings:'opsz' 144, 'SOFT' 100, 'WONK' 0;   /* max softness, light (300) weight, display optical size */
+    letter-spacing:-.005em; color:#fff; text-shadow:none; margin:0; }
+  #splash .title .ital{ font-style:italic; }   /* "points" in italic; same 300 weight + max softness as the rest (inherited) */
+  /* logo = three rounded device frames (phone / tablet / desktop) — the default-layout mark */
+  #splash .logo{ display:flex; justify-content:center; margin-bottom:2px; }
+  #splash .logo svg{ width:58px; height:auto; filter:drop-shadow(0 4px 26px rgba(11,28,58,.7)); }
+  #splash .logo rect{ fill:#fff; }
+  #splash .sub{ font:400 clamp(14px,2vw,20px)/1.4 var(--font); color:rgba(255,255,255,.92); text-shadow:none; margin:0; max-width:none; white-space:nowrap; }   /* one line */
+  #splash .urlbar{ display:flex; align-items:center; margin-top:6px; width:min(460px,86%);
+    background:transparent; border:1px solid rgba(255,255,255,.5); border-radius:12px; padding:14px 18px; }   /* outline only, no fill */
+  #splash #splash-url{ flex:1; min-width:0; background:transparent; border:0; outline:0; color:#fff;
+    font:400 15px/1 var(--font); }   /* Host Grotesk */
+  #splash #splash-url::placeholder{ color:rgba(255,255,255,.62); }
+  /* submit affordance — no box, just a white arrow that fades in once the typed URL is valid */
+  #splash .splash-go{ flex:0 0 auto; margin-left:8px; background:transparent; border:0; padding:0; cursor:pointer;
+    color:#fff; display:inline-flex; align-items:center; opacity:0; transform:translateX(-4px); pointer-events:none;
+    transition:opacity .7s ease, transform .7s var(--ease); }   /* slow fade-in once the URL is valid */
+  #splash .splash-go .msym{ font-size:22px; }
+  #splash .splash-go.show{ opacity:1; transform:none; pointer-events:auto; }
+  #splash .splash-go:hover{ opacity:.7; }
+  #splash .splash-err{ height:16px; margin:2px 0 0; font:500 13px/1 var(--font); color:#C0392B;
+    opacity:0; transition:opacity .2s ease; }   /* inline nudge on a bad/empty URL (toast sits behind the splash) */
+  #splash .splash-err.show{ opacity:1; }
+  /* persistent embedding caveat — a framing-blocked site shows blank and can't be auto-detected, so say it up front */
+  #splash .splash-note{ margin:12px auto 0; max-width:min(460px,86%); font:400 12px/1.5 var(--font);
+    color:rgba(255,255,255,.62); text-shadow:none; }
+  /* attribution at the very top — JetBrains Mono; only the @handle is underlined */
+  #splash .splash-credit{ position:absolute; top:28px; left:50%; transform:translateX(-50%); z-index:2;
+    font:400 12px/1 var(--mono); letter-spacing:.04em; color:#fff; text-shadow:none; text-decoration:none; white-space:nowrap; }   /* white over the photo */
+  #splash .splash-credit span{ color:#fff; text-decoration:underline; text-underline-offset:3px; transition:opacity .2s ease; }
+  #splash .splash-credit:hover span{ opacity:.75; }
+  /* "Add to Claude Code" install bar — shown ONLY on the deployed site (body.deployed), hidden for local/skill use */
+  #splash .install{ display:none; }
+  body.deployed #splash .install{ display:flex; flex-direction:column; align-items:center; gap:8px; margin-top:18px; }
+  #splash .install-label{ font:400 11px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:rgba(255,255,255,.6); }
+  #splash .install-cmd{ display:flex; align-items:stretch; gap:8px; width:min(540px,90%); }
+  #splash .install-cmd code{ flex:1; min-width:0; text-align:left; white-space:pre; overflow-x:auto;
+    background:rgba(0,0,0,.28); border:1px solid rgba(255,255,255,.4); border-radius:10px; padding:12px 14px;
+    font:400 12.5px/1.55 var(--mono); color:#fff; -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); }
+  #splash .install-copy{ flex:0 0 auto; background:#fff; color:#0d1c3a; border:0; border-radius:10px; padding:0 18px;
+    font:600 13px/1 var(--font); cursor:pointer; transition:opacity .2s ease, transform .12s ease; }
+  #splash .install-copy:hover{ opacity:.85; }
+  #splash .install-copy:active{ transform:scale(.96); }
+  #splash .install-copy.copied{ background:#1f9d55; color:#fff; }
+
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{ transition-duration:.01ms !important; animation-duration:.01ms !important; }
+  }
+</style>
+</head>
+<body>
+  <div id="bar">
+    <div class="left">
+      <button id="home" class="iconbtn" type="button" title="Back to the start screen" aria-label="Back to the start screen"><span class="msym ph ph-house"></span></button>
+      <input id="url" type="text" spellcheck="false" autocomplete="off" aria-label="URL" placeholder="URL">
+    </div>
+    <div class="right">
+      <button id="reload" class="iconbtn" type="button" title="Reload all frames" aria-label="Reload all frames"><span class="msym ph ph-arrow-clockwise"></span></button>
+      <span class="divider"></span>
+      <button id="navback" class="iconbtn" type="button" title="Back (all frames when sync is on)" aria-label="Navigate back"><span class="msym ph ph-arrow-left"></span></button>
+      <button id="syncbtn" class="iconbtn toggle" type="button" title="Sync scrolling across all frames" aria-label="Sync scrolling across all frames"><span class="msym ph ph-arrows-clockwise"></span></button>
+      <button id="navfwd" class="iconbtn" type="button" title="Forward (all frames when sync is on)" aria-label="Navigate forward"><span class="msym ph ph-arrow-right"></span></button>
+      <span class="divider"></span>
+      <div class="zoomgrp">
+        <span id="fitmount"></span>
+        <button id="zoomout" class="iconbtn" type="button" title="Zoom out" aria-label="Zoom out"><span class="msym ph ph-magnifying-glass-minus"></span></button>
+        <button id="zoomin" class="iconbtn" type="button" title="Zoom in" aria-label="Zoom in"><span class="msym ph ph-magnifying-glass-plus"></span></button>
+      </div>
+      <span class="divider"></span>
+      <span id="layouts"></span>
+      <span class="divider"></span>
+      <button id="shotall" class="iconbtn" type="button" title="Save PNG of every frame (to Downloads)" aria-label="Save PNG of every frame"><span class="msym ph ph-camera"></span></button>
+      <span class="divider"></span>
+      <button id="bg" class="iconbtn" type="button" title="Background" aria-label="Cycle stage background"><span class="msym ph ph-circle-half"></span></button>
+    </div>
+  </div>
+
+  <div id="stage">
+    <div id="wrap"><div id="track"></div></div>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <!-- Opening screen: light welcome over a faintly resizing wireframe window. Hidden by default; shown at
+       Init only when no URL has been entered yet. Submitting a URL fades it away and builds the frames. -->
+  <div id="splash">
+    <a class="splash-credit" href="https://x.com/iamliamliamiam" target="_blank" rel="noopener noreferrer">built by <span>@iamliamliamiam</span></a>
+    <div class="bg-stage">
+      <div class="winchrome">
+        <div class="winbar"><i></i><i></i><i></i></div>
+        <div class="site">
+          <div class="nav"><div class="logo"></div><div class="sp"></div><div class="lnk"></div><div class="lnk"></div><div class="lnk"></div></div>
+          <div class="hero"><div class="l w1"></div><div class="l w2"></div><div class="btn"></div></div>
+          <div class="cards"><div class="c"></div><div class="c"></div><div class="c"></div><div class="c"></div></div>
+          <div class="foot"></div>
+        </div>
+      </div>
+    </div>
+    <div class="frontlayer">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 61 24" width="58" height="23">
+          <rect x="0.5" y="1" width="8" height="22" rx="2.5"></rect>
+          <rect x="14.5" y="1" width="15" height="22" rx="2.5"></rect>
+          <rect x="35.5" y="1" width="25" height="22" rx="2.5"></rect>
+        </svg>
+      </div>
+      <h1 class="title">Break<span class="ital">points</span></h1>
+      <p class="sub">See your site at every major breakpoint, side-by-side as you build.</p>
+      <div class="urlbar"><input id="splash-url" type="text" spellcheck="false" autocomplete="off" placeholder="Enter your URL" aria-label="Enter a URL to preview"><button id="splash-go" class="splash-go" type="button" tabindex="-1" title="Open this URL" aria-label="Open this URL"><span class="msym ph ph-arrow-square-in"></span></button></div>
+      <p class="splash-err" id="splash-err" role="alert">Enter a valid http:// or https:// URL.</p>
+      <p class="splash-note">Sites you build preview fine. Some sites (Google, banks, etc.) block embedding and show a blank frame — that's the site refusing to be embedded, not the tool.</p>
+      <!-- install bar: only rendered on the deployed site (JS adds body.deployed off-localhost); copies the Claude Code install commands -->
+      <div class="install" id="install">
+        <span class="install-label">Add to Claude Code</span>
+        <div class="install-cmd">
+          <code id="install-text">/plugin marketplace add liamjmills/breakpoints-skill
+/plugin install breakpoints@liam-skills</code>
+          <button id="install-copy" class="install-copy" type="button" aria-label="Copy install commands">Copy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  'use strict';
+
+  var FRAME_H   = 900;   // default (portrait) window height
+  var DEFAULT_FRAMES = [
+    { label:'Mobile',  width:375,  height:FRAME_H },
+    { label:'Tablet',  width:768,  height:FRAME_H },
+    { label:'Desktop', width:1280, height:FRAME_H }
+  ];
+  var DEFAULTS = { url:'', zoom:'width', bg:'white', lockFit:false, sync:false }; // url '' = no site yet → the opening screen (#splash) shows until one is entered; bg defaults to white; zoom: 'width' | 'height' | a number; lockFit: keep re-fitting when frames resize; sync: scroll all frames together
+
+  // Unified device list: [name, width, height]. Portrait/desktop keep the tall window;
+  // landscape entries are wide + short so they actually look sideways. Widths are unique
+  // across all groups (the dropdown matches a frame to a device by width alone).
+  var DEVICE_GROUPS = [
+    ['Phone',   [['iPhone SE',375,900],['iPhone',390,900],['iPhone Max',430,900],['iPhone L',844,390]]],
+    ['Tablet',  [['iPad Mini',768,900],['iPad',834,900],['iPad Pro',1024,900],['iPad L',1194,834]]],   // short brand names; L = landscape (wide + short). 390 + 834 added so the Phones & Tablet Rotation layouts resolve to a name, not Custom
+    ['Desktop', [['Laptop',1280,900],['Desktop',1920,900]]]
+  ];
+
+  var STAGE_PAD = 24;
+  var MIN_W = 240, MAX_W = 3000, MAX_FRAMES = 6;
+  var MIN_ZOOM = 0.1, ZOOM_STEP = 1.15, ZOOM_DUR = 550;   // zoom-out floor + per-click step (zoom-in is capped at Fit height); ZOOM_DUR = silky scale+pan glide, ms (matches the .zsmooth CSS)
+
+  var stage = document.getElementById('stage');
+  var bar   = document.getElementById('bar');
+  var wrap  = document.getElementById('wrap');
+  var track = document.getElementById('track');
+  var urlInput  = document.getElementById('url');
+  var toastEl   = document.getElementById('toast');
+
+  var state = loadState();
+  applyQueryOverride();
+  var iframes = [];
+  var currentScale = 1;
+  var lastHeightFit = 1;          // the Fit-height scale from the last recompute (= zoom-in cap)
+  var zsmoothT = null;            // timer that clears the smooth-zoom transition class
+  var panRAF = null;              // requestAnimationFrame handle for the silky pan-to-centre during zoom
+  var focusIdx = null;            // when set, that frame is the focused spotlight over a frozen backdrop
+  var focusBlur = null;           // the single backdrop-filter overlay that blurs+dims the grid while focused
+  var focusTf = null;             // the focused frame's centre+fill transform target (for the FLIP open)
+  var currentLayout = null;       // name of the last-loaded layout, shown in the Layouts selector
+  var toastTimer = null;
+
+  function clampW(v){ v = parseInt(v,10); if(!v) return null; return Math.min(MAX_W, Math.max(100, v)); }
+  function clampH(v){ v = parseInt(v,10); if(!v) return FRAME_H; return Math.min(3000, Math.max(200, v)); }
+  // stage bg is white/grey/black; map any legacy dark/light/check values forward
+  function migrateBg(v){ var m = { dark:'black', light:'white', check:'grey' }; v = m[v] || v;
+    return (v === 'white' || v === 'grey' || v === 'black') ? v : DEFAULTS.bg; }
+
+  function loadState(){
+    try{
+      var raw = localStorage.getItem('viewerState');
+      if(raw){
+        var s = JSON.parse(raw);
+        var frames;
+        if(Array.isArray(s.frames) && s.frames.length){
+          frames = s.frames.slice(0, MAX_FRAMES).map(function(f){
+            return { label: (typeof f.label==='string' && f.label) ? f.label : 'Frame',
+                     width: clampW(f.width) || 375, height: clampH(f.height) };
+          });
+        } else if(Array.isArray(s.widths) && s.widths.length){      // migrate old {widths:[...]}
+          frames = s.widths.slice(0, MAX_FRAMES).map(function(w){ var ww = clampW(w) || 375; return { label: categoryName(ww), width: ww, height: FRAME_H }; });
+        } else {
+          frames = DEFAULT_FRAMES.map(function(f){ return { label:f.label, width:f.width, height:f.height }; });
+        }
+        return {
+          url:    (typeof s.url === 'string' && safeUrl(s.url)) ? s.url : DEFAULTS.url,   // re-validate: a poisoned localStorage URL must not survive reloads
+          frames: frames,
+          zoom:   (s.zoom === 'width' || s.zoom === 'height' || (typeof s.zoom === 'number' && s.zoom > 0 && s.zoom <= 3)) ? s.zoom : DEFAULTS.zoom,
+          bg:     migrateBg(s.bg),
+          lockFit: typeof s.lockFit === 'boolean' ? s.lockFit : DEFAULTS.lockFit,
+          sync:   typeof s.sync === 'boolean' ? s.sync : DEFAULTS.sync
+        };
+      }
+    }catch(e){ /* private mode / file:// — ignore */ }
+    return { url:DEFAULTS.url, frames:DEFAULT_FRAMES.map(function(f){ return {label:f.label,width:f.width,height:f.height}; }),
+             zoom:DEFAULTS.zoom, bg:DEFAULTS.bg, lockFit:DEFAULTS.lockFit, sync:DEFAULTS.sync };
+  }
+
+  function saveState(){ try{ localStorage.setItem('viewerState', JSON.stringify(state)); }catch(e){} }
+
+  // Only http(s) URLs are allowed into the iframes. A `javascript:`/`data:` URL assigned to iframe.src
+  // would run in OUR origin (read/poison localStorage, etc.), so reject every other scheme at every entry
+  // point (query param, URL input, AND the persisted value on load). Returns the URL if safe, else null.
+  function safeUrl(u){
+    try{ var p = new URL(String(u), location.href); return (p.protocol === 'http:' || p.protocol === 'https:') ? u : null; }
+    catch(e){ return null; }
+  }
+
+  function applyQueryOverride(){
+    try{ var q = new URLSearchParams(location.search).get('url'); var safe = q && safeUrl(q); if(safe){ state.url = safe; } }catch(e){}
+  }
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    if(toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 2600);
+  }
+
+  function slug(s){ return String(s).trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
+
+  // live size class, updated as a frame is resized (matches common breakpoints + the defaults)
+  function categoryName(w){ return w < 768 ? 'Mobile' : (w < 1280 ? 'Tablet' : 'Desktop'); }
+  // filename device class: phone/tablet/desktop (lowercase, for screenshot names)
+  function deviceSlug(w){ return w < 768 ? 'phone' : (w < 1280 ? 'tablet' : 'desktop'); }
+
+  function trackNaturalWidth(){
+    var gap = parseInt(getComputedStyle(track).gap, 10) || 0;
+    var sum = state.frames.reduce(function(a,f){ return a + Number(f.width); }, 0);
+    return sum + gap * Math.max(0, state.frames.length - 1);
+  }
+
+  // Reusable custom dropdown. opts: { className, items:[{value,label,group?,...}], placeholder, onSelect(value,item) }.
+  // The trigger lives inline (it may sit inside the scaled #track); the menu is appended to <body> as
+  // position:fixed and always opens directly BELOW the trigger — so the stage's clipped overflow can't
+  // cut it, the track's transform can't shrink it, and it never opens off the top of the screen the way
+  // a native <select> popup (anchored to the selected item) did.
+  function createDropdown(opts){
+    opts = opts || {};
+    var items = opts.items || [];
+    var value = null, open = false, removeT = null;
+
+    var wrap = document.createElement('div'); wrap.className = 'dd' + (opts.className ? ' ' + opts.className : '');
+    var trigger = document.createElement('button'); trigger.type = 'button'; trigger.className = 'dd-trigger';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    var labelEl = document.createElement('span'); labelEl.className = 'dd-label';
+    var chev = document.createElement('span'); chev.className = 'msym dd-chev ph ph-caret-down';
+    trigger.appendChild(labelEl); trigger.appendChild(chev);
+    wrap.appendChild(trigger);
+
+    var menu = document.createElement('div'); menu.className = 'dd-menu'; menu.setAttribute('role', 'listbox');
+
+    function labelFor(v){ for(var i=0;i<items.length;i++){ if(String(items[i].value)===String(v)) return items[i].label; } return opts.placeholder || ''; }
+    function setValue(v){ value = v; labelEl.textContent = labelFor(v); }
+
+    function renderMenu(){
+      menu.innerHTML = '';
+      var lastGroup = null;
+      items.forEach(function(it){
+        if(it.group && it.group !== lastGroup){
+          var g = document.createElement('div'); g.className = 'dd-group'; g.textContent = it.group;
+          menu.appendChild(g); lastGroup = it.group;
+        } else if(!it.group){ lastGroup = null; }
+        var o = document.createElement('button'); o.type = 'button'; o.className = 'dd-opt'; o.setAttribute('role', 'option');
+        o.textContent = it.label;
+        if(String(it.value) === String(value)) o.classList.add('sel');
+        o.addEventListener('click', function(){ setValue(it.value); closeMenu(); if(opts.onSelect) opts.onSelect(it.value, it); });
+        menu.appendChild(o);
+      });
+    }
+    function position(){
+      var r = trigger.getBoundingClientRect();
+      menu.style.top = Math.round(r.bottom + 4) + 'px';   // a small gap below the trigger (detached look) — the earlier left-edge sliver is fixed via the left nudge below, not by closing this gap
+      menu.style.left = '0px';
+      var mw = menu.offsetWidth, left = r.left;
+      if(left + mw > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 8 - mw);
+      menu.style.left = (Math.floor(left) - 1) + 'px';   // nudge left ~1px so the menu's left edge covers the frame/trigger left edge — no lit sliver from sub-pixel rounding at fractional scales
+      menu.style.maxHeight = Math.max(140, window.innerHeight - r.bottom - 16) + 'px';
+    }
+    function onDoc(e){ if(!menu.contains(e.target) && !wrap.contains(e.target)) closeMenu(); }
+    function onKey(e){ if(e.key === 'Escape') closeMenu(); }
+    function openMenu(){
+      if(open) return; open = true;
+      clearTimeout(removeT);                                  // a fast re-open: cancel the pending detach so we reuse the node mid-animation
+      renderMenu(); document.body.appendChild(menu); position();
+      wrap.classList.add('open');
+      void menu.offsetWidth;                                  // reflow so the transition runs FROM the start state (-6px / .97), not instantly
+      menu.classList.add('in');                               // → fades + slides/scales down into place
+      document.addEventListener('mousedown', onDoc, true);
+      document.addEventListener('keydown', onKey, true);
+      window.addEventListener('resize', closeMenu);
+      window.addEventListener('scroll', closeMenu, true);   // fixed menu won't follow a pan → close it
+    }
+    function closeMenu(){
+      if(!open) return; open = false;
+      menu.classList.remove('in');                            // animate out, then detach after the transition
+      clearTimeout(removeT);
+      removeT = setTimeout(function(){ if(menu.parentNode) menu.parentNode.removeChild(menu); }, 220);
+      wrap.classList.remove('open');
+      document.removeEventListener('mousedown', onDoc, true);
+      document.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('resize', closeMenu);
+      window.removeEventListener('scroll', closeMenu, true);
+    }
+    trigger.addEventListener('click', function(e){ e.stopPropagation(); if(open) closeMenu(); else openMenu(); });
+
+    if(opts.placeholder) labelEl.textContent = opts.placeholder;
+    return { el: wrap, setValue: setValue,
+             setLabel: function(t){ labelEl.textContent = t; }, close: closeMenu };
+  }
+
+  function deviceItems(){
+    var items = [{ value:'custom', label:'Custom' }];
+    DEVICE_GROUPS.forEach(function(g){
+      g[1].forEach(function(d){ items.push({ value:String(d[1]), label:d[0] + ' · ' + d[1], group:g[0], h:d[2] }); });
+    });
+    return items;
+  }
+
+  function buildFrames(){
+    track.innerHTML = '';
+    iframes = [];
+    lastTouched = 0; pendingScroll = {};   // frame indices change on rebuild — reset the align leader + any pending scrolls
+    focusIdx = null;             // structural change exits focus
+
+    state.frames.forEach(function(fr, i){
+      var frame = document.createElement('div'); frame.className = 'frame';
+
+      var head = document.createElement('header');
+
+      var ctrl = document.createElement('div'); ctrl.className = 'ctrl';
+
+      var dd = createDropdown({
+        className:'preset', items: deviceItems(),
+        onSelect: function(value, it){
+          if(value === 'custom'){ winp.style.display = ''; unit.style.display = ''; winp.focus(); winp.select(); return; }
+          applySize(parseInt(value, 10), clampH(it.h));   // a device pick sets width AND height (animated in focus)
+        }
+      });
+
+      var winp = document.createElement('input');
+      winp.className = 'w'; winp.type = 'number'; winp.min = '100'; winp.value = fr.width;
+      var unit = document.createElement('span'); unit.className = 'unit'; unit.textContent = 'px';
+
+      var focusBtn = document.createElement('button'); focusBtn.className = 'fbtn focusbtn'; focusBtn.type = 'button';
+      focusBtn.title = 'Focus this frame'; focusBtn.setAttribute('aria-label','Focus this frame');
+      focusBtn.innerHTML = '<span class="msym fbase ph ph-eye"></span>';   // single eye; fills (ph-fill) when active
+
+      var shotBtn = document.createElement('button'); shotBtn.className = 'fbtn'; shotBtn.type = 'button';
+      shotBtn.title = 'Save PNG of this frame'; shotBtn.setAttribute('aria-label','Save PNG of this frame');
+      shotBtn.innerHTML = '<span class="msym ph ph-camera"></span>';
+
+      var canvas = document.createElement('div'); canvas.className = 'canvas';
+      var ifr = document.createElement('iframe');
+      // NOTE: deliberately NOT sandboxed. This tool needs to read the framed doc (Save PNG / same-origin
+      // preview), which requires `allow-same-origin`; combined with `allow-scripts` the sandbox can be escaped
+      // by a same-origin page anyway (the browser warns about exactly this), so it adds no real protection
+      // here while spamming the console every load. safeUrl() (http(s)-only at every entry point) is the
+      // effective guard — javascript:/data: never reach iframe.src. Revisit only for an "untrusted page" mode.
+      ifr.style.width  = fr.width + 'px';
+      ifr.style.height = (fr.height || FRAME_H) + 'px';
+      frame.style.width = fr.width + 'px';   // pin frame to iframe width so the header wraps inside it (no clipped controls)
+      ifr.src = state.url;
+      ifr.addEventListener('load', function(){ attachSyncScroll(i); updateSyncLock(); onFrameNavigated(i); applyPendingScroll(i); });   // (re)wire scroll-sync + re-check cross-origin lock + mirror navigation + apply any pending align-scroll each load
+
+      var grip = document.createElement('div'); grip.className = 'grip'; grip.title = 'Drag to resize';
+
+      function syncSelect(){
+        var w = state.frames[i].width, match = null;
+        DEVICE_GROUPS.forEach(function(g){ g[1].forEach(function(d){ if(d[1] === w) match = d; }); });
+        dd.setValue(match ? String(w) : 'custom');
+        var custom = !match;                         // px field shows only for Custom; a preset shows its size in the dropdown label
+        winp.style.display = custom ? '' : 'none';
+        unit.style.display = custom ? '' : 'none';
+      }
+      // Apply a width (and optional height), then refit. recompute() handles both the row and the
+      // single focused frame (solo view), so there's no focus special-casing here.
+      function applySize(w, h){
+        if(h != null){ state.frames[i].height = h; ifr.style.height = h + 'px'; }
+        state.frames[i].width = w;
+        ifr.style.width = w + 'px';
+        frame.style.width = w + 'px';
+        winp.value = w;
+        syncSelect();
+        saveState();
+        recompute();
+      }
+
+      winp.addEventListener('change', function(){
+        var v = parseInt(winp.value, 10);
+        if(!v || v < 100){ winp.value = state.frames[i].width; return; }
+        applySize(Math.min(MAX_W, v));
+      });
+
+      focusBtn.addEventListener('click', function(){ focusFrame(i); });
+      shotBtn.addEventListener('click', function(){ shoot(i); });
+
+      // drag-to-resize (cursor delta / frozen scale = true px; re-fit on release)
+      grip.addEventListener('pointerdown', function(e){
+        e.preventDefault();
+        try{ grip.setPointerCapture(e.pointerId); }catch(err){}
+        frame.classList.add('resizing');
+        track.classList.remove('zsmooth'); wrap.classList.remove('zsmooth'); stage.classList.remove('zsmooth'); clearTimeout(zsmoothT); if(panRAF) cancelAnimationFrame(panRAF);   // drag must be instant, not eased (also cancel any in-flight zoom ease + pan tween so nothing fights the drag)
+        var inFocus = (focusIdx === i);
+        var startX = e.clientX, startW = state.frames[i].width, s = currentScale || 1;
+        if(inFocus){   // in focus the frame shows at its fill scale, not the row scale — drag against that so it tracks the cursor
+          var aW = stage.clientWidth - STAGE_PAD * 2, aH = stage.clientHeight - STAGE_PAD * 2;
+          s = Math.max(0.1, Math.min(3, Math.min(aW / frame.offsetWidth, aH / frame.offsetHeight)));
+        }
+        var startScroll = stage.scrollLeft, lastX = e.clientX, edgeRAF = null, moveRAF = null, EDGE = 52;
+        function setW(clientX){
+          // count how far we've auto-panned, so the grip keeps following even when the cursor is pinned at the screen edge
+          var delta = (clientX - startX) + (stage.scrollLeft - startScroll);
+          var nw = Math.min(MAX_W, Math.max(MIN_W, Math.round(startW + delta / s)));
+          state.frames[i].width = nw;
+          ifr.style.width = nw + 'px';
+          frame.style.width = nw + 'px';
+          winp.value = nw;
+          syncSelect();
+          if(inFocus) recompute();   // refit the lone focused frame live as it resizes
+          else relayout(s);
+        }
+        function edgeLoop(){   // while the cursor sits near a stage edge, pan that way so the drag can continue past it
+          var r = stage.getBoundingClientRect();
+          if(lastX > r.right - EDGE && state.frames[i].width < MAX_W){ stage.scrollLeft += 16; setW(lastX); edgeRAF = requestAnimationFrame(edgeLoop); }   // stop auto-panning once the frame is maxed (otherwise it drifts into empty padding)
+          else if(lastX < r.left + EDGE && stage.scrollLeft > 0){ stage.scrollLeft -= 16; setW(lastX); edgeRAF = requestAnimationFrame(edgeLoop); }
+          else { edgeRAF = null; }
+        }
+        function move(ev){
+          lastX = ev.clientX;
+          // coalesce: run the layout work (setW → reflow) at most ONCE per frame with the freshest X, instead
+          // of once per pointermove (120+/s on hi-Hz input → reflow per event). edgeLoop already runs setW per
+          // frame, and up() commits the final width, so this only caps frequency — the drag math is unchanged.
+          if(!moveRAF) moveRAF = requestAnimationFrame(function(){ moveRAF = null; setW(lastX); });
+          if(inFocus) return;                   // no edge-pan in focus (the stage doesn't scroll there)
+          var r = stage.getBoundingClientRect();
+          if(!edgeRAF && (ev.clientX > r.right - EDGE || ev.clientX < r.left + EDGE)) edgeRAF = requestAnimationFrame(edgeLoop);
+        }
+        function up(){
+          try{ grip.releasePointerCapture(e.pointerId); }catch(err){}
+          if(edgeRAF) cancelAnimationFrame(edgeRAF);
+          if(moveRAF){ cancelAnimationFrame(moveRAF); moveRAF = null; setW(lastX); }   // a coalesced move may still be pending — commit the exact final width
+          frame.classList.remove('resizing');
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', up);
+          // unlocked: freeze the fit to the current scale so resizing doesn't snap everything back to fit (the "jump"); never in focus (row zoom is irrelevant there)
+          if(!inFocus && !state.lockFit && (state.zoom === 'width' || state.zoom === 'height')) state.zoom = currentScale;
+          saveState(); recompute();
+        }
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+      });
+
+      syncSelect();
+      var cleft = document.createElement('div'); cleft.className = 'ctrl-left';
+      cleft.appendChild(dd.el); cleft.appendChild(winp); cleft.appendChild(unit);
+      var cright = document.createElement('div'); cright.className = 'ctrl-right';
+      cright.appendChild(focusBtn); cright.appendChild(shotBtn);
+      ctrl.appendChild(cleft); ctrl.appendChild(cright);
+      head.appendChild(ctrl);
+      canvas.appendChild(ifr); canvas.appendChild(grip);
+      frame.appendChild(head); frame.appendChild(canvas);
+      track.appendChild(frame);
+      iframes.push(ifr);
+    });
+    applyFocus();   // focusIdx was reset above — clear the focused-stage styling + show all frames
+  }
+
+  function relayout(scale){
+    track.style.width = trackNaturalWidth() + 'px';
+    var natW = track.offsetWidth, natH = track.offsetHeight;
+    wrap.style.width  = Math.ceil(natW * scale) + 'px';
+    wrap.style.height = Math.ceil(natH * scale) + 'px';
+  }
+
+  function setFocusButtons(i, on){
+    var fr = track.children[i]; if(!fr) return;
+    var fb = fr.querySelector('.focusbtn'); if(!fb) return;
+    fb.classList.toggle('on', on);
+    var base = fb.querySelector('.fbase');                                  // the single eye → fill it when focus is active
+    if(base){ base.classList.toggle('ph-fill', on); base.classList.toggle('ph', !on); }
+    fb.title = on ? 'Exit focus' : 'Focus this frame';
+  }
+  // Sync all focus state to focusIdx (used after a rebuild — buildFrames sets focusIdx=null first).
+  function applyFocus(){
+    stage.classList.toggle('focused', focusIdx != null);
+    bar.classList.toggle('focusmode', focusIdx != null);   // dim the zoom controls while focused
+    if(layoutDD) layoutDD.setLabel(focusIdx != null ? 'Focus Mode' : (currentLayout || 'Layouts…'));   // focus → indicator; otherwise show the layout you're on
+    if(focusIdx == null) removeBlur();
+    for(var k = 0; k < track.children.length; k++){
+      var on = (focusIdx === k);
+      track.children[k].classList.toggle('focused', on);
+      if(!on){ track.children[k].style.transform = ''; track.children[k].style.opacity = ''; track.children[k].style.transition = ''; }
+      setFocusButtons(k, on);
+    }
+    if(focusIdx != null) layoutFocused(currentScale);
+  }
+
+  // Focus = LIGHTBOX over a live, uniformly-blurred grid (rebuilt s9f — replaces the s9d snapshot, whose
+  // ~300ms capture caused the open to pause / the others to vanish for a beat). The whole live grid is
+  // blurred + dimmed in ONE pass by a single `backdrop-filter` overlay (`.focus-blur`) that sits BETWEEN the
+  // other frames (below it) and the focused frame (above it, z:5). One blur pass → no per-frame edge "line";
+  // it's the live grid → instant (no capture, no gap) and on close we just fade the overlay out and the real
+  // unfocused grid is right there (no rebuild). The focused frame FLIPs from its slot → centre+fill on open
+  // and settles back on close.
+  var focusExitT = null;
+  function removeBlur(){ if(focusBlur && focusBlur.parentNode) focusBlur.parentNode.removeChild(focusBlur); focusBlur = null; }
+
+  function enterFocus(i){
+    var fr = track.children[i]; if(!fr) return;
+    focusIdx = i;
+    setFocusButtons(i, true);
+    bar.classList.add('focusmode');
+    if(layoutDD) layoutDD.setLabel('Focus Mode');
+    removeBlur();
+    focusBlur = document.createElement('div'); focusBlur.className = 'focus-blur';   // one uniform backdrop-filter pass
+    track.appendChild(focusBlur);
+    stage.classList.add('focused');
+    fr.classList.add('focused');                            // z:5 — sits above the blur overlay (z:3)
+    layoutFocused(currentScale);                            // compute focusTf {tx,ty,k} = the centre+fill target
+    var t = focusTf;
+    if(t){                                                  // FLIP: start AT the slot, then pull out to centre+fill
+      fr.style.transition = 'none';
+      fr.style.transform = 'none';
+      void fr.offsetWidth;
+      fr.style.transition = '';
+      fr.style.transform = 'translate(' + t.tx + 'px,' + t.ty + 'px) scale(' + t.k + ')';
+    }
+    void focusBlur.offsetWidth; focusBlur.classList.add('in');   // fade the blur in alongside the pull-out
+  }
+
+  function exitFocus(){
+    var i = focusIdx, fr = track.children[i];
+    focusIdx = null;
+    bar.classList.remove('focusmode');
+    if(layoutDD) layoutDD.setLabel(currentLayout || 'Layouts…');
+    setFocusButtons(i, false);
+    if(focusBlur) focusBlur.classList.remove('in');         // un-blur → the live unfocused grid re-appears in place
+    if(fr){ fr.style.transition = ''; fr.style.transform = 'none'; }   // settle back into its grid slot (reverse FLIP)
+    focusExitT = setTimeout(function(){
+      stage.classList.remove('focused');
+      if(fr){ fr.classList.remove('focused'); fr.style.transform = ''; fr.style.transition = ''; }
+      removeBlur();
+      recompute();
+    }, 440);
+  }
+
+  function focusFrame(i){
+    clearTimeout(focusExitT);
+    if(focusIdx != null) exitFocus();                      // clicking ⛶ again (or the surround) exits
+    else enterFocus(i);
+  }
+  // Lightbox-style: while focused, clicking the empty surround (anywhere outside the focused frame) exits.
+  // Clicks on the frame's controls stay inside it; clicks on the iframe don't bubble out — so neither exits.
+  stage.addEventListener('click', function(e){
+    if(focusIdx == null) return;
+    var ff = track.children[focusIdx];
+    if(ff && !ff.contains(e.target)) focusFrame(focusIdx);
+  });
+
+  // Compute the transform that lifts the focused frame to FILL the stage, centred, ON TOP of the
+  // (still-laid-out, blurred) row. Measured from real screen rects so we don't have to reason about
+  // the compounding #track scale: tx/ty are in the frame's local space (÷ rowScale); k is the extra
+  // scale on top of the row scale needed to reach the fill scale.
+  function focusTransform(rowScale){
+    var frame = track.children[focusIdx];
+    if(!frame) return null;
+    var prev = frame.style.transform, prevTrans = frame.style.transition;
+    frame.style.transition = 'none';                         // CRITICAL: kill the .55s transition or `transform:none`
+    frame.style.transform = 'none';                          // would ANIMATE, so we'd measure the OLD (still-centred) spot
+    var fw = frame.offsetWidth, fh = frame.offsetHeight;     // → resize would never re-centre. Now it measures the true row position.
+    var availW = stage.clientWidth - STAGE_PAD * 2, availH = stage.clientHeight - STAGE_PAD * 2;
+    var FS = Math.max(0.05, Math.min(3, Math.min(availW / fw, availH / fh)));   // whole frame visible
+    var k = FS / rowScale;
+    var f = frame.getBoundingClientRect(), s = stage.getBoundingClientRect();
+    var dx = (s.left + s.width  / 2) - (f.left + f.width  / 2);
+    var dy = (s.top  + s.height / 2) - (f.top  + f.height / 2);
+    frame.style.transform = prev;
+    void frame.offsetWidth;                                  // commit the restore instantly...
+    frame.style.transition = prevTrans;                      // ...then re-enable the transition so the NEXT change eases
+    return { tx: dx / rowScale, ty: dy / rowScale, k: k };
+  }
+  function layoutFocused(rowScale){
+    var t = focusTransform(rowScale); if(!t) return;
+    focusTf = t;                                            // remembered for the scale-from-0 enter
+    track.children[focusIdx].style.transform = 'translate(' + t.tx + 'px,' + t.ty + 'px) scale(' + t.k + ')';
+  }
+
+  // state.zoom: 'width' = fit the row across the stage width, 'height' = fill the stage height, or a
+  // number = a fixed % scale. The row ALWAYS lays out normally now — in focus the other frames stay
+  // (CSS blurs+dims them) and layoutFocused() overlays the focused one at fill scale.
+  function recompute(){
+    var focused = (focusIdx != null);
+    track.style.width = trackNaturalWidth() + 'px';
+    var natW = track.offsetWidth, natH = track.offsetHeight;
+    var availW = stage.clientWidth - STAGE_PAD * 2, availH = stage.clientHeight - STAGE_PAD * 2;
+    var heightFit = availH / natH;                           // the most zoomed-in we allow (full height = whole frame visible)
+    var scale = (state.zoom === 'width')  ? Math.min(availW / natW, heightFit)       // Fit-width, capped at full height
+              : (state.zoom === 'height') ? heightFit
+              : Math.min(state.zoom || 1, heightFit);
+    scale = Math.max(0.05, Math.min(3, scale));
+    currentScale = scale;
+    lastHeightFit = Math.max(0.05, Math.min(3, heightFit));   // the top-to-bottom cap, for zoom-in enablement
+    track.style.transform = 'scale(' + scale + ')';
+    wrap.style.width  = Math.ceil(natW * scale) + 'px';
+    wrap.style.height = Math.ceil(natH * scale) + 'px';
+    if(focused) layoutFocused(scale);                         // overlay the focused frame at fill scale, centred
+    paintZoom();                                            // reflect the active fit mode on the buttons
+  }
+
+  function reloadAll(){ iframes.forEach(function(ifr){ ifr.src = state.url; }); }
+
+  // --- Sync scroll: when on, scrolling one frame scrolls the others to the same RELATIVE position (the pages
+  // are the same site at different widths, so absolute px wouldn't line up — proportional keeps the same
+  // section in view across widths). Same-origin only (a cross-origin frame throws on read → it's skipped).
+  // Re-attached on every iframe load (each load is a fresh contentWindow).
+  //
+  // The "leader" lock prevents a feedback loop: the frame you're actively scrolling becomes the leader and
+  // drives the others; the followers' resulting scroll events are IGNORED while they're not the leader. The
+  // lock releases ~120ms after scrolling stops (each scroll resets the timer, so a continuous drag keeps the
+  // same leader). A single short-lived flag wasn't enough — the programmatic scrolls fired their own events
+  // after it reset, and a follower would fight back, dragging everything to the wrong spot.
+  var syncLeader = null, syncReleaseT = null;
+  var lastTouched = 0;          // index of the frame the user last interacted with (scroll / nav) — the leader when sync is turned on
+  var pendingScroll = {};       // per-frame scroll % to apply after a programmatic navigation settles (used by alignSync)
+  function attachSyncScroll(i){
+    try{
+      var w = iframes[i] && iframes[i].contentWindow;
+      if(!w) return;
+      void w.document;                                   // throws for a cross-origin page → caught below, no sync for it
+      // genuine user interaction (not programmatic scroll/reload) marks this frame as last-touched → the leader when sync turns on
+      ['wheel','mousedown','touchstart','keydown'].forEach(function(ev){ w.addEventListener(ev, function(){ lastTouched = i; }, { passive:true }); });
+      w.addEventListener('scroll', function(){
+        if(!state.sync) return;
+        if(syncLeader !== null && syncLeader !== i) return;   // a follower being synced → ignore its scroll
+        syncLeader = i;
+        clearTimeout(syncReleaseT);
+        syncReleaseT = setTimeout(function(){ syncLeader = null; }, 120);
+        var src, sdoc;
+        try{ src = iframes[i].contentWindow; sdoc = src.document; }catch(e){ return; }
+        var smax = Math.max(0, sdoc.documentElement.scrollHeight - src.innerHeight);
+        var pct  = smax > 0 ? (src.scrollY / smax) : 0;
+        iframes.forEach(function(other, j){
+          if(j === i) return;
+          try{
+            var ow = other.contentWindow, omax = Math.max(0, ow.document.documentElement.scrollHeight - ow.innerHeight);
+            ow.scrollTo({ top: Math.round(pct * omax), left: 0, behavior: 'instant' });   // instant so followers track tightly, ignoring the page's scroll-behavior:smooth
+          }catch(e){}
+        });
+      }, { passive:true });
+    }catch(e){ /* cross-origin frame → leave it unsynced */ }
+  }
+  function paintSync(){
+    var b = document.getElementById('syncbtn'); if(!b) return;
+    b.classList.toggle('on', !!state.sync);
+    b.title = state.sync ? 'Scroll sync ON — click to turn off' : 'Sync scrolling across all frames';
+  }
+
+  // --- Synced navigation: Back / Forward drive a "leader" frame; when sync is ON, the leader's resulting URL
+  // is mirrored to every other frame so the whole set lands on the same page (scroll-sync then matches the
+  // spot). Clicking a link in ANY frame mirrors to the rest the same way. Same-origin only (we read/control
+  // each iframe's history + location, blocked cross-origin) → locked on the deployed cross-origin site, like
+  // scroll-sync. A diff-guard (only navigate frames whose path differs) + a leader lock keep it loop-safe.
+  var navLeader = null, navReleaseT = null;
+  function leaderFrame(){ return (focusIdx != null) ? focusIdx : 0; }   // focused frame, else frame 1 (the sync-off default)
+  function navGo(dir){                                                  // dir < 0 = back, > 0 = forward
+    if(framesCrossOrigin()) return;
+    var L = leaderFrame(), w;
+    try{ w = iframes[L].contentWindow; }catch(e){ return; }
+    try{ dir < 0 ? w.history.back() : w.history.forward(); }catch(e){}
+    // the leader's resulting load fires onFrameNavigated(L), which mirrors to the others when sync is on
+  }
+  // Called from each iframe's load. When sync is on, force every OTHER frame to this frame's URL.
+  function onFrameNavigated(i){
+    if(!state.sync || framesCrossOrigin()) return;
+    if(navLeader !== null && navLeader !== i) return;     // a follower we just navigated → ignore its load
+    lastTouched = i;                                      // the genuine navigator → leader for a later sync-align
+    var href; try{ href = iframes[i].contentWindow.location.href; }catch(e){ return; }
+    navLeader = i;
+    clearTimeout(navReleaseT);
+    navReleaseT = setTimeout(function(){ navLeader = null; }, 600);
+    iframes.forEach(function(other, j){
+      if(j === i) return;
+      var oh; try{ oh = other.contentWindow.location.href; }catch(e){ return; }
+      if(oh !== href){ try{ other.contentWindow.location.replace(href); }catch(e){} }   // diff-guard: skip frames already there → loop-safe
+    });
+  }
+  // Turning sync ON aligns the whole set to the last-touched frame (fallback frame 1): same page, then same
+  // scroll spot. Frames already on that page just scroll; the rest navigate (scroll applied on their load).
+  function alignSync(){
+    if(framesCrossOrigin()) return;
+    var L = iframes[lastTouched] ? lastTouched : 0, lw;
+    try{ lw = iframes[L].contentWindow; }catch(e){ return; }
+    var href; try{ href = lw.location.href; }catch(e){ return; }
+    var pct = 0;
+    try{ var d = lw.document.documentElement, max = Math.max(0, d.scrollHeight - lw.innerHeight); pct = max > 0 ? lw.scrollY / max : 0; }catch(e){}
+    navLeader = L; clearTimeout(navReleaseT); navReleaseT = setTimeout(function(){ navLeader = null; }, 800);   // suppress follower-load re-mirroring while they navigate
+    iframes.forEach(function(other, j){
+      if(j === L) return;
+      var ow; try{ ow = other.contentWindow; }catch(e){ return; }
+      var same; try{ same = (ow.location.href === href); }catch(e){ same = false; }
+      if(same){
+        try{ var od = ow.document.documentElement, omax = Math.max(0, od.scrollHeight - ow.innerHeight); ow.scrollTo({ top: Math.round(pct * omax), left: 0, behavior: 'instant' }); }catch(e){}
+      } else {
+        pendingScroll[j] = pct;                            // applied once this frame's navigation loads (see applyPendingScroll)
+        try{ ow.location.replace(href); }catch(e){}
+      }
+    });
+  }
+  function applyPendingScroll(i){
+    if(pendingScroll[i] == null) return;
+    var pct = pendingScroll[i]; pendingScroll[i] = null;
+    var w; try{ w = iframes[i].contentWindow; }catch(e){ return; }
+    requestAnimationFrame(function(){                      // let the freshly-loaded page lay out before measuring scrollHeight
+      try{ var d = w.document.documentElement, max = Math.max(0, d.scrollHeight - w.innerHeight); w.scrollTo({ top: Math.round(pct * max), left: 0, behavior: 'instant' }); }catch(e){}
+    });
+  }
+  // Sync needs to READ each iframe's scroll — impossible cross-origin (Same-Origin Policy). When the loaded
+  // site is a different origin (e.g. a deployed viewer previewing someone else's URL), lock the sync button:
+  // swap its icon to a padlock, disable it, force sync off. Re-checked on every iframe load.
+  function framesCrossOrigin(){
+    if(!iframes.length) return false;
+    try{ void iframes[0].contentWindow.document.body; return false; }
+    catch(e){ return true; }
+  }
+  function updateSyncLock(){
+    var b = document.getElementById('syncbtn'); if(!b) return;
+    var xo = framesCrossOrigin();
+    b.classList.toggle('locked', xo);   // keeps the sync icon; CSS draws a diagonal strike + dims it
+    b.disabled = xo;
+    if(xo){
+      if(state.sync){ state.sync = false; saveState(); }
+      b.classList.remove('on');
+      b.title = 'Feature in progress';
+    } else {
+      paintSync();
+    }
+    // nav (Back/Forward) needs to control each iframe's history → same-origin only; lock it cross-origin too
+    ['navback','navfwd'].forEach(function(id){
+      var nb = document.getElementById(id); if(!nb) return;
+      nb.classList.toggle('locked', xo);
+      nb.disabled = xo;
+      if(xo) nb.title = 'Feature in progress';
+      else nb.title = (id === 'navback' ? 'Back' : 'Forward') + ' (all frames when sync is on)';
+    });
+  }
+
+  // --- per-frame screenshot via html-to-image (foreignObject) — same-origin only; graceful failure ---
+  // Why html-to-image, not html2canvas (swapped s9j): html2canvas RE-IMPLEMENTS rendering in JS, so it can't
+  // draw charts/SVG sprites/gradients faithfully. html-to-image serialises the DOM into an SVG <foreignObject>
+  // and lets the BROWSER'S OWN engine rasterise it → faithful (verified: chart, sprite icons, gradients, fonts,
+  // CORS-clean images all render, matching a true headless screenshot). Lazy-loaded on first use (lean cold load).
+  var h2iPromise = null;
+  function loadHtmlToImage(){
+    if(window.htmlToImage && typeof window.htmlToImage.toCanvas === 'function') return Promise.resolve();
+    if(h2iPromise) return h2iPromise;
+    h2iPromise = new Promise(function(resolve, reject){
+      var s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/dist/html-to-image.js';
+      s.onload = resolve;
+      s.onerror = function(){ h2iPromise = null; reject(); };   // null so a later attempt can retry (e.g. came back online)
+      document.head.appendChild(s);
+    });
+    return h2iPromise;
+  }
+
+  // Capture the VISIBLE WINDOW of frame i (current scroll band only — NOT the whole page). Returns Promise<canvas>.
+  function renderFrame(i){
+    var ifr = iframes[i], win, doc;
+    try{ win = ifr.contentWindow; doc = win.document; void doc.body; }
+    catch(e){ return Promise.reject('cross-origin'); }
+    var w  = state.frames[i].width;
+    var vh = ifr.clientHeight || state.frames[i].height || FRAME_H;        // the visible viewport height
+    var sy = win.scrollY || (doc.documentElement && doc.documentElement.scrollTop) || 0;
+    // base colour = the PAGE's own background (so a dark site captures dark, a white site white) — never the
+    // viewer's stage colour. Walk body→html for the first opaque bg; fall back to white.
+    var baseBg = '#ffffff';
+    try{
+      [doc.body, doc.documentElement].some(function(el){
+        var c = el && getComputedStyle(el).backgroundColor;
+        if(c && c !== 'transparent' && !/rgba?\(0,\s*0,\s*0,\s*0\)/.test(c)){ baseBg = c; return true; }
+        return false;
+      });
+    }catch(e){}
+    return loadHtmlToImage()
+      .then(function(){ return (doc.fonts && doc.fonts.ready) ? doc.fonts.ready : null; })   // let web fonts settle (correct metrics)
+      .then(function(){
+        return window.htmlToImage.toCanvas(doc.documentElement, {
+          width: w, height: vh,                     // output = the visible band (top-left of the node, after the offset below)
+          backgroundColor: baseBg,                  // opaque page bg, so the stage colour never bleeds in
+          pixelRatio: window.devicePixelRatio || 1,
+          cacheBust: true,                          // dodge stale-cache CORS taints on images
+          skipFonts: true,                          // Chrome rasterises the foreignObject with the page's already-loaded fonts,
+                                                    // so we DON'T need to embed @font-face — and skipping it avoids the noisy
+                                                    // cross-origin `cssRules` errors html-to-image throws on Google-Fonts links
+          // shift the page up by the current scroll so the captured band = what's actually visible in the frame
+          style: { transform: 'translateY(' + (-sy) + 'px)', transformOrigin: 'top left' }
+        });
+      });
+  }
+
+  function canvasToBlob(canvas){
+    return new Promise(function(res, rej){ canvas.toBlob(function(b){ b ? res(b) : rej('blocked'); }); });
+  }
+
+  // Screenshots save to the browser's Downloads folder, named <device>-<width>px. (Writing straight into a
+  // chosen project folder via the File System Access API was dropped s9d — macOS/iCloud kept refusing the
+  // folder picker. Claude files the shots into the project's screenshots/ folder during review instead.)
+  function downloadBlob(name, blob){
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 2000);
+  }
+  function saveShot(base, blob){
+    downloadBlob(base + '.png', blob); toast('Saved ' + base + '.png to Downloads');
+    return Promise.resolve();
+  }
+
+  function shotBase(i){ return deviceSlug(state.frames[i].width) + '-' + state.frames[i].width + 'px'; }
+
+  // per-frame Save PNG: capture the visible window → name <device>-<width>px → save to the chosen folder
+  function shoot(i){
+    toast('Capturing…');
+    renderFrame(i).then(canvasToBlob).then(function(blob){
+      return saveShot(shotBase(i), blob);
+    }).catch(function(err){
+      toast(err === 'cross-origin'
+        ? 'Cross-origin page — can’t capture. Use your OS screenshot.'
+        : 'Couldn’t capture (offline, or blocked by cross-origin content?).');
+    });
+  }
+
+  // Capture every visible frame in one go, each named by its own device+width (sequential).
+  function shootAll(){
+    if(!state.frames.length) return;
+    toast('Capturing all…');
+    var idx = 0, saved = 0;
+    function next(){
+      if(idx >= state.frames.length){ toast('Saved ' + saved + ' screenshot' + (saved === 1 ? '' : 's')); return; }
+      var i = idx++;
+      renderFrame(i).then(canvasToBlob).then(function(blob){
+        return saveShot(shotBase(i), blob).then(function(){ saved++; });
+      }).catch(function(){ /* skip a frame that failed (e.g. cross-origin) */ }).then(next);
+    }
+    next();
+  }
+
+  function applyBackground(){
+    stage.classList.remove('bg-white','bg-grey');
+    document.body.classList.remove('bg-white','bg-grey');   // mirror onto <body> so the toolbar (a sibling of #stage) can tint too
+    if(state.bg === 'white'){ stage.classList.add('bg-white'); document.body.classList.add('bg-white'); }
+    else if(state.bg === 'grey'){ stage.classList.add('bg-grey'); document.body.classList.add('bg-grey'); }
+    // 'black' = no class (the #stage / body default)
+  }
+
+  // Controls
+  urlInput.value = state.url;
+  urlInput.addEventListener('change', function(){
+    var v = safeUrl(urlInput.value.trim());
+    if(!v){ toast('Only http(s) URLs are allowed.'); urlInput.value = state.url; return; }
+    state.url = v; saveState(); reloadAll();
+  });
+  document.getElementById('reload').addEventListener('click', reloadAll);
+  document.getElementById('navback').addEventListener('click', function(){ navGo(-1); });
+  document.getElementById('navfwd').addEventListener('click', function(){ navGo(1); });
+  function centerScroll(){   // centre horizontally when content is wider than the stage (stage is overflow-y:hidden, so there's no vertical pan)
+    stage.scrollLeft = Math.max(0, (stage.scrollWidth - stage.clientWidth) / 2);
+  }
+  // Zoom = a Fit dropdown (Fit width / Fit height) + Zoom out / Zoom in buttons (no % menu).
+  // Everything routes through applyZoom(), which EASES the scale (the `.zsmooth` classes transition
+  // track + wrap) AND smooth-scrolls back to centre (scroll-behavior on the stage) so there's no jolt.
+  // Zoom-in is capped at Fit height (the top-to-bottom view); at the cap the button just disables.
+  var zoomoutBtn = document.getElementById('zoomout');
+  var zoominBtn  = document.getElementById('zoomin');
+  var fitDD = createDropdown({
+    className:'fitdd',
+    items:[{ value:'width', label:'Fit Width' }, { value:'height', label:'Fit Height' }],
+    onSelect: function(v){ applyZoom(v); }
+  });
+  document.getElementById('fitmount').appendChild(fitDD.el);
+
+  function paintZoom(){
+    if(state.zoom === 'width' || state.zoom === 'height'){ fitDD.setValue(state.zoom); }
+    else { fitDD.setValue(null); fitDD.setLabel(Math.round(currentScale * 100) + '%'); }   // numeric zoom → show the %
+    var inFocus = focusIdx != null;
+    zoominBtn.disabled  = inFocus || currentScale >= lastHeightFit - 0.002;   // at the top-to-bottom cap
+    zoomoutBtn.disabled = inFocus || currentScale <= MIN_ZOOM + 0.002;
+  }
+  function smoothPanToCenter(dur){     // JS-tween scrollLeft to the centred position over `dur`, eased to match the scale curve
+    if(panRAF) cancelAnimationFrame(panRAF);
+    var natW = track.offsetWidth;      // unscaled track width (offsetWidth ignores the transform) — final scaled width below
+    var fullW = Math.ceil(natW * currentScale) + STAGE_PAD * 2;
+    var from = stage.scrollLeft, to = Math.max(0, (fullW - stage.clientWidth) / 2), start = null;
+    if(Math.abs(to - from) < 0.5){ stage.scrollLeft = to; return; }   // nothing to pan
+    function step(ts){
+      if(start === null) start = ts;
+      var t = dur > 0 ? Math.min(1, (ts - start) / dur) : 1;
+      var e = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;       // easeInOutCubic — same shape as the CSS scale curve, so pan + scale stay locked together
+      stage.scrollLeft = from + (to - from) * e;
+      if(t < 1) panRAF = requestAnimationFrame(step); else panRAF = null;
+    }
+    panRAF = requestAnimationFrame(step);
+  }
+  function applyZoom(z){               // animate to a new zoom (z = 'width' | 'height' | number) — silky: scale + pan glide together over ZOOM_DUR
+    state.zoom = z;
+    track.classList.add('zsmooth'); wrap.classList.add('zsmooth');   // CSS eases the scale + wrap size
+    saveState(); recompute();                                        // sets the final scale; CSS transitions the track transform to it
+    smoothPanToCenter(ZOOM_DUR);                                     // pan to centre over the SAME duration → no snap-then-recentre
+    clearTimeout(zsmoothT);
+    zsmoothT = setTimeout(function(){
+      track.classList.remove('zsmooth'); wrap.classList.remove('zsmooth');
+    }, ZOOM_DUR + 60);
+  }
+  zoomoutBtn.addEventListener('click', function(){ applyZoom(Math.max(MIN_ZOOM, currentScale / ZOOM_STEP)); });
+  zoominBtn.addEventListener('click', function(){
+    if(currentScale >= lastHeightFit - 0.002) return;        // already at the top-to-bottom view → no-op (button disabled)
+    applyZoom(Math.min(lastHeightFit, currentScale * ZOOM_STEP));
+  });
+
+  var bgBtn = document.getElementById('bg');
+  var BG_ORDER = ['white','grey','black'], BG_NAMES = { white:'White', grey:'Grey', black:'Black' };
+  function paintBg(){ bgBtn.title = 'Background: ' + BG_NAMES[state.bg] + ' (click to cycle)'; applyBackground(); }
+  paintBg();
+  bgBtn.addEventListener('click', function(){
+    state.bg = BG_ORDER[(BG_ORDER.indexOf(state.bg) + 1) % BG_ORDER.length];
+    saveState(); paintBg();
+  });
+
+  // --- layouts: fixed, load-only presets. Each frame is [width, height]; landscape = wide + short.
+  var layouts = {
+    'Default':          [[375,900],[768,900],[1280,900]],
+    'Phones':           [[375,900],[390,900],[844,390]],   // two portrait + one sideways
+    'Mobile + Desktop': [[390,900],[1280,900]],
+    'Tablet Rotation':  [[834,1194],[1194,834]],           // one tablet both ways — iPad Pro 11" portrait + landscape
+    'Full Range':       [[375,900],[768,900],[1280,900],[1920,900]]   // phone → tablet → laptop → large desktop
+  };
+  // Loading a layout plays a swap animation (old row slides down + out, new slides in from the top)
+  // instead of a toast. The build happens mid-animation, between the out and in halves.
+  var swapT = null, swapT2 = null;
+  function loadLayout(name){
+    if(!layouts[name]) return;
+    currentLayout = name;                                    // remember it so the selector shows the layout you're on (not "Layouts…")
+    if(focusIdx != null){ focusIdx = null; applyFocus(); }   // exit focus first so the per-frame fall-away isn't blocked by the focus transforms
+    var out = track.children, on = out.length;
+    for(var a = 0; a < on; a++){ out[a].style.setProperty('--si', String(a)); out[a].classList.add('swap-out'); }   // stagger the fall-away, left→right
+    clearTimeout(swapT);
+    swapT = setTimeout(function(){
+      state.frames = layouts[name].slice(0, MAX_FRAMES).map(function(it){
+        var w = clampW(Array.isArray(it) ? it[0] : it) || 375;
+        var h = clampH(Array.isArray(it) ? it[1] : FRAME_H);
+        return { label: categoryName(w), width: w, height: h };
+      });
+      state.zoom = 'width';        // always show the whole new set; a leftover zoom would clip a bigger layout
+      saveState(); buildFrames(); recompute(); centerScroll();
+      var inn = track.children, inN = inn.length, b;
+      for(b = 0; b < inN; b++){ inn[b].style.setProperty('--si', String(b)); inn[b].classList.add('swap-in'); }   // snap each new frame to its start (offset up + hidden)
+      void wrap.offsetWidth;                        // reflow so the staggered slide-in runs from that start state
+      for(b = 0; b < inN; b++){ inn[b].classList.add('swap-in-go'); }   // → each slides into place + fades in, one after another
+      clearTimeout(swapT2);
+      swapT2 = setTimeout(function(){
+        var k = track.children;
+        for(var c = 0; c < k.length; c++){ k[c].classList.remove('swap-in', 'swap-in-go'); k[c].style.removeProperty('--si'); }
+      }, 750 + (inN - 1) * 110 + 160);
+    }, 520 + Math.max(0, on - 1) * 75);             // wait out the staggered fall-away (each frame is invisible by then) before rebuilding
+  }
+  var layoutDD = createDropdown({
+    className:'layoutdd', placeholder:'Layouts…',
+    items: Object.keys(layouts).map(function(n){ return { value:n, label:n }; }),
+    onSelect: loadLayout
+  });
+  document.getElementById('layouts').appendChild(layoutDD.el);
+
+  window.addEventListener('resize', recompute);   // always re-fit; recompute() re-clamps even a frozen numeric zoom to Fit-height, so a frame can't end up clipped below the stage when the window shrinks
+
+  // screenshots: per-frame Save PNG + Capture-All, both download to the browser's Downloads folder
+  document.getElementById('shotall').addEventListener('click', shootAll);
+
+  // scroll sync toggle
+  document.getElementById('syncbtn').addEventListener('click', function(){ state.sync = !state.sync; saveState(); paintSync(); if(state.sync) alignSync(); });
+  paintSync();
+
+  // --- opening screen: shown until a URL has been entered once. Submitting validates via safeUrl(),
+  // then builds the frames for the first time and fades the splash away. A saved/?url= URL skips it (see Init).
+  var splash    = document.getElementById('splash');
+  var splashUrl = document.getElementById('splash-url');
+  var splashErr = document.getElementById('splash-err');
+  var splashGo  = document.getElementById('splash-go');
+  var splashHideT = null;
+  function refreshGo(){ splashGo.classList.toggle('show', !!safeUrl(splashUrl.value.trim())); }   // arrow appears only when the typed URL is valid
+  function showSplash(){                                  // open over the tool — at init (no URL) or via the home button
+    clearTimeout(splashHideT);
+    splashErr.classList.remove('show');
+    splash.classList.remove('gone');                      // ensure opaque if a prior hide left it mid-fade
+    splashUrl.value = '';                                 // always a fresh, empty field
+    splashGo.classList.remove('show');                    // empty field → no arrow yet
+    splash.classList.add('show');
+    setTimeout(function(){ splashUrl.focus(); }, 60);
+  }
+  function resetToSplash(){                               // home button = full reset: forget the saved site so the old preview isn't kept/refreshed
+    try{ localStorage.removeItem('viewerState'); }catch(e){}
+    state.url = '';
+    showSplash();
+  }
+  function hideSplash(){                                  // fade out + drop the overlay (no rebuild)
+    splash.classList.add('gone');
+    splashHideT = setTimeout(function(){ splash.classList.remove('show','gone'); }, 450);
+  }
+  function submitSplash(){
+    var v = safeUrl(splashUrl.value.trim());
+    if(!v){ splashErr.classList.add('show'); splashUrl.focus(); return; }   // bad/empty/non-http(s) → inline nudge, stay put
+    state.url = v; urlInput.value = v; saveState();
+    hideSplash();
+    buildFrames(); recompute(); centerScroll();                              // (re)build for the entered URL
+    staggerIn();                                                             // play the left→right slide-in (same as a layout load) as the splash fades away
+  }
+  // The first build after the splash is dismissed — a slower, smoother staggered slide-in (own intro-* classes).
+  function staggerIn(){
+    var inn = track.children, inN = inn.length, b;
+    for(b = 0; b < inN; b++){ inn[b].style.setProperty('--si', String(b)); inn[b].classList.add('intro-in'); }   // snap each to its start (offset up + hidden)
+    void wrap.offsetWidth;                                                                                       // reflow so the slide runs from that start state
+    for(b = 0; b < inN; b++){ inn[b].classList.add('intro-in-go'); }                                             // → each glides into place, staggered left→right
+    clearTimeout(swapT2);
+    swapT2 = setTimeout(function(){
+      var k = track.children;
+      for(var c = 0; c < k.length; c++){ k[c].classList.remove('intro-in','intro-in-go'); k[c].style.removeProperty('--si'); }
+    }, 1100 + (inN - 1) * 150 + 200);
+  }
+  splashUrl.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ e.preventDefault(); submitSplash(); }
+    else if(e.key === 'Escape' && safeUrl(state.url)){ hideSplash(); }       // cancel → back to the tool (only once a site is already loaded)
+  });
+  splashUrl.addEventListener('input', function(){ splashErr.classList.remove('show'); refreshGo(); });
+  splashGo.addEventListener('click', submitSplash);                          // the arrow = submit
+  document.getElementById('home').addEventListener('click', resetToSplash);  // home → clear the saved site + reopen the opening screen fresh
+
+  // Install bar: show only when NOT running locally (i.e. the deployed demo site, not the skill launcher on 127.0.0.1).
+  (function(){
+    var h = location.hostname;
+    var local = (h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h === '::1' || h === '[::1]' || location.protocol === 'file:');
+    if(!local) document.body.classList.add('deployed');
+    var copyBtn = document.getElementById('install-copy'), cmd = document.getElementById('install-text');
+    if(copyBtn && cmd){
+      copyBtn.addEventListener('click', function(){
+        var text = cmd.textContent;
+        var done = function(){ copyBtn.classList.add('copied'); copyBtn.textContent = 'Copied'; setTimeout(function(){ copyBtn.classList.remove('copied'); copyBtn.textContent = 'Copy'; }, 1600); };
+        if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done, done); }
+        else { try{ var t=document.createElement('textarea'); t.value=text; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); done(); }catch(e){} }
+      });
+    }
+  })();
+
+  // Init — a saved/?url= URL goes straight to the frames; otherwise show the opening screen first.
+  applyBackground();
+  if(safeUrl(state.url)){
+    buildFrames();
+    recompute();
+  } else {
+    showSplash();
+  }
+})();
+</script>
+</body>
+</html>
