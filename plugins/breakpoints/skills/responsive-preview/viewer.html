@@ -322,22 +322,50 @@
   #splash .splash-note{ margin:12px auto 0; max-width:min(460px,86%); font:400 12px/1.5 var(--font);
     color:rgba(255,255,255,.62); text-shadow:none; }
   /* attribution at the very top — JetBrains Mono; only the @handle is underlined */
-  #splash .splash-credit{ position:absolute; top:28px; left:50%; transform:translateX(-50%); z-index:2;
-    font:400 12px/1 var(--mono); letter-spacing:.04em; color:#fff; text-shadow:none; text-decoration:none; white-space:nowrap; }   /* white over the photo */
-  #splash .splash-credit span{ color:#fff; text-decoration:underline; text-underline-offset:3px; transition:opacity .2s ease; }
-  #splash .splash-credit:hover span{ opacity:.75; }
-  /* "Add to Claude Code" install bar — shown ONLY on the deployed site (body.deployed), hidden for local/skill use */
+  #splash .splash-credit{ position:absolute; top:28px; left:50%; transform:translateX(-50%); z-index:6;
+    display:flex; align-items:center; gap:7px; font:400 12px/1 var(--mono); letter-spacing:.04em; color:#fff; white-space:nowrap; }
+  #splash .splash-credit a{ color:#fff; text-decoration:none; transition:opacity .2s ease; }
+  #splash .splash-credit a:hover{ opacity:.7; }
+  #splash .splash-credit .h{ text-decoration:underline; text-underline-offset:3px; }   /* only the @handle underlined */
+  #splash .splash-credit .dot{ opacity:.5; }                                            /* middle-dot separator, centred via flex */
+  #splash .splash-credit .dep{ display:none; }                                          /* email + coffee show only on the deployed site */
+  body.deployed #splash .splash-credit .dep{ display:inline; }
+  /* skill install: a button (+ eye tooltip) that opens a popover OVER the page; never pushes layout. Deployed-only. */
   #splash .install{ display:none; }
-  body.deployed #splash .install{ display:flex; flex-direction:column; align-items:center; gap:8px; margin-top:18px; }
-  #splash .install-label{ font:400 11px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:rgba(255,255,255,.6); }
-  #splash .install-cmd{ display:flex; align-items:stretch; gap:8px; width:min(540px,90%); }
-  #splash .install-cmd code{ flex:1; min-width:0; text-align:left; white-space:pre; overflow-x:auto;
-    background:rgba(0,0,0,.28); border:1px solid rgba(255,255,255,.4); border-radius:10px; padding:12px 14px;
-    font:400 12.5px/1.55 var(--mono); color:#fff; -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); }
-  #splash .install-copy{ flex:0 0 auto; background:#fff; color:#0d1c3a; border:0; border-radius:10px; padding:0 18px;
-    font:600 13px/1 var(--font); cursor:pointer; transition:opacity .2s ease, transform .12s ease; }
+  body.deployed #splash .install{ display:block; position:relative; margin-top:18px; }
+  #splash .install-row{ display:flex; align-items:center; justify-content:center; gap:10px; }
+  #splash .install-trigger{ display:inline-flex; align-items:center; gap:8px; padding:11px 18px; border:1px solid rgba(255,255,255,.5);
+    border-radius:12px; background:rgba(255,255,255,.06); color:#fff; cursor:pointer; font:600 14px/1 var(--font);
+    -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); transition:background .2s ease, transform .12s ease; }
+  #splash .install-trigger:hover{ background:rgba(255,255,255,.14); }
+  #splash .install-trigger:active{ transform:scale(.97); }
+  #splash .install-trigger .msym{ font-size:18px; }
+  /* eye -> hover tooltip carrying the embedding caveat (replaces the old always-on paragraph) */
+  #splash .install-info{ position:relative; display:inline-flex; align-items:center; color:rgba(255,255,255,.7); cursor:help; }
+  #splash .install-info .msym{ font-size:18px; }
+  #splash .install-info:hover{ color:#fff; }
+  #splash .install-tip{ position:absolute; bottom:calc(100% + 10px); left:50%; transform:translateX(-50%) translateY(4px);
+    width:260px; text-align:center; background:rgba(0,0,0,.62); border:1px solid rgba(255,255,255,.22); border-radius:10px;
+    padding:10px 12px; font:400 12px/1.5 var(--font); color:rgba(255,255,255,.92); z-index:31;
+    -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px); opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease; }
+  #splash .install-info:hover .install-tip, #splash .install-info:focus-visible .install-tip{ opacity:1; transform:translateX(-50%) translateY(0); }
+  /* popover panel — absolute, pops OVER everything below; does not reflow the page */
+  #splash .install-panel{ position:absolute; top:calc(100% + 12px); left:50%; transform:translateX(-50%) scale(.98);
+    width:min(560px,86vw); text-align:left; background:rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.3); border-radius:14px;
+    padding:18px; z-index:30; opacity:0; pointer-events:none; -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px);
+    transition:opacity .2s ease, transform .2s ease; }
+  #splash .install-panel.open{ opacity:1; pointer-events:auto; transform:translateX(-50%) scale(1); }
+  #splash .install-panel h3{ margin:0 0 8px; font:600 15px/1.25 var(--font); color:#fff; }
+  #splash .install-panel p{ margin:0 0 14px; font:400 13px/1.55 var(--font); color:rgba(255,255,255,.82); }
+  #splash .install-cmd{ display:flex; align-items:stretch; gap:8px; }
+  #splash .install-cmd code{ flex:1; min-width:0; white-space:pre; overflow-x:auto;
+    background:rgba(0,0,0,.4); border:1px solid rgba(255,255,255,.3); border-radius:10px; padding:11px 13px;
+    font:400 12.5px/1.55 var(--mono); color:#fff; }
+  #splash .install-copy{ flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:42px; background:#fff; color:#0d1c3a;
+    border:0; border-radius:10px; cursor:pointer; transition:opacity .2s ease, transform .12s ease; }
+  #splash .install-copy .msym{ font-size:18px; }
   #splash .install-copy:hover{ opacity:.85; }
-  #splash .install-copy:active{ transform:scale(.96); }
+  #splash .install-copy:active{ transform:scale(.94); }
   #splash .install-copy.copied{ background:#1f9d55; color:#fff; }
 
   @media (prefers-reduced-motion:reduce){
@@ -380,7 +408,12 @@
   <!-- Opening screen: light welcome over a faintly resizing wireframe window. Hidden by default; shown at
        Init only when no URL has been entered yet. Submitting a URL fades it away and builds the frames. -->
   <div id="splash">
-    <a class="splash-credit" href="https://x.com/iamliamliamiam" target="_blank" rel="noopener noreferrer">built by <span>@iamliamliamiam</span></a>
+    <!-- top line: built-by + (deployed-only) email/coffee, all one mono row, middle-dot separated -->
+    <div class="splash-credit">
+      <span>built by <a class="h" href="https://x.com/iamliamliamiam" target="_blank" rel="noopener noreferrer">@iamliamliamiam</a></span>
+      <span class="dot dep">·</span><a class="dep" href="mailto:liam.mills1998@gmail.com">Email me</a>
+      <span class="dot dep">·</span><a class="dep" href="https://buymeacoffee.com/liammills" target="_blank" rel="noopener noreferrer">Buy me a coffee</a>
+    </div>
     <div class="bg-stage">
       <div class="winchrome">
         <div class="winbar"><i></i><i></i><i></i></div>
@@ -404,14 +437,25 @@
       <p class="sub">See your site at every major breakpoint, side-by-side as you build.</p>
       <div class="urlbar"><input id="splash-url" type="text" spellcheck="false" autocomplete="off" placeholder="Enter your URL" aria-label="Enter a URL to preview"><button id="splash-go" class="splash-go" type="button" tabindex="-1" title="Open this URL" aria-label="Open this URL"><span class="msym ph ph-arrow-square-in"></span></button></div>
       <p class="splash-err" id="splash-err" role="alert">Enter a valid http:// or https:// URL.</p>
-      <p class="splash-note">Sites you build preview fine. Some sites (Google, banks, etc.) block embedding and show a blank frame — that's the site refusing to be embedded, not the tool.</p>
-      <!-- install bar: only rendered on the deployed site (JS adds body.deployed off-localhost); copies the Claude Code install commands -->
+      <!-- deployed-only: Install button + eye-tooltip; opens a popover with the explainer + install commands (JS adds body.deployed off-localhost) -->
       <div class="install" id="install">
-        <span class="install-label">Add to Claude Code</span>
-        <div class="install-cmd">
-          <code id="install-text">/plugin marketplace add liamjmills/breakpoints-skill
+        <div class="install-row">
+          <button id="install-trigger" class="install-trigger" type="button" aria-expanded="false" aria-controls="install-panel">
+            <span class="msym ph ph-download-simple"></span>Install the skill
+          </button>
+          <span class="install-info" tabindex="0" role="note" aria-label="Which sites preview">
+            <span class="msym ph ph-eye"></span>
+            <span class="install-tip">Sites you build preview fine. Some sites (Google, banks, etc.) block embedding and show a blank frame — that's the site refusing to be embedded, not the tool.</span>
+          </span>
+        </div>
+        <div class="install-panel" id="install-panel">
+          <h3>Run Breakpoints in your own sessions</h3>
+          <p>This page previews any URL, but it embeds your site cross-origin — so scroll-sync, synced Back/Forward, and Save PNG can’t work here (browsers block cross-frame access). Install the skill to run Breakpoints inside your own Claude Code: it proxies your local dev server same-origin, so every feature works.</p>
+          <div class="install-cmd">
+            <code id="install-text">/plugin marketplace add liamjmills/breakpoints-skill
 /plugin install breakpoints@liam-skills</code>
-          <button id="install-copy" class="install-copy" type="button" aria-label="Copy install commands">Copy</button>
+            <button id="install-copy" class="install-copy" type="button" aria-label="Copy install commands"><span class="msym ph ph-copy"></span></button>
+          </div>
         </div>
       </div>
     </div>
@@ -1335,16 +1379,28 @@
   splashGo.addEventListener('click', submitSplash);                          // the arrow = submit
   document.getElementById('home').addEventListener('click', resetToSplash);  // home → clear the saved site + reopen the opening screen fresh
 
-  // Install bar: show only when NOT running locally (i.e. the deployed demo site, not the skill launcher on 127.0.0.1).
+  // Install panel + social buttons: show only when NOT running locally (the deployed demo, not the skill launcher on 127.0.0.1).
   (function(){
     var h = location.hostname;
     var local = (h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h === '::1' || h === '[::1]' || location.protocol === 'file:');
     if(!local) document.body.classList.add('deployed');
+    var trigger = document.getElementById('install-trigger'), panel = document.getElementById('install-panel');
+    if(trigger && panel){
+      trigger.addEventListener('click', function(){
+        var open = panel.classList.toggle('open');
+        trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+    }
     var copyBtn = document.getElementById('install-copy'), cmd = document.getElementById('install-text');
     if(copyBtn && cmd){
       copyBtn.addEventListener('click', function(){
         var text = cmd.textContent;
-        var done = function(){ copyBtn.classList.add('copied'); copyBtn.textContent = 'Copied'; setTimeout(function(){ copyBtn.classList.remove('copied'); copyBtn.textContent = 'Copy'; }, 1600); };
+        var icon = copyBtn.querySelector('.msym');
+        var done = function(){
+          copyBtn.classList.add('copied');
+          if(icon){ icon.classList.remove('ph-copy'); icon.classList.add('ph-check'); }
+          setTimeout(function(){ copyBtn.classList.remove('copied'); if(icon){ icon.classList.remove('ph-check'); icon.classList.add('ph-copy'); } }, 1600);
+        };
         if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done, done); }
         else { try{ var t=document.createElement('textarea'); t.value=text; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); done(); }catch(e){} }
       });
