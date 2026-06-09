@@ -326,7 +326,7 @@
     display:flex; align-items:center; gap:7px; font:400 12px/1 var(--mono); letter-spacing:.04em; color:#fff; white-space:nowrap; }
   #splash .splash-credit a{ color:#fff; text-decoration:none; transition:opacity .2s ease; }
   #splash .splash-credit a:hover{ opacity:.7; }
-  #splash .splash-credit .h{ text-decoration:underline; text-underline-offset:3px; }   /* only the @handle underlined */
+  #splash .splash-credit .h{ text-decoration:none; }   /* @handle not underlined */
   #splash .splash-credit .dot{ opacity:.5; }                                            /* middle-dot separator, centred via flex */
   #splash .splash-credit .dep{ display:none; }                                          /* email + coffee show only on the deployed site */
   body.deployed #splash .splash-credit .dep{ display:inline; }
@@ -443,9 +443,9 @@
           <button id="install-trigger" class="install-trigger" type="button" aria-expanded="false" aria-controls="install-panel">
             <span class="msym ph ph-download-simple"></span>Install the skill
           </button>
-          <span class="install-info" tabindex="0" role="note" aria-label="Which sites preview">
-            <span class="msym ph ph-eye"></span>
-            <span class="install-tip">Sites you build preview fine. Some sites (Google, banks, etc.) block embedding and show a blank frame — that's the site refusing to be embedded, not the tool.</span>
+          <span class="install-info" tabindex="0" role="note" aria-label="About the web version">
+            <span class="msym ph ph-info"></span>
+            <span class="install-tip">Not all features work on the web version — install it on your own CLI to get the full experience.</span>
           </span>
         </div>
         <div class="install-panel" id="install-panel">
