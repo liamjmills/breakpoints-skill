@@ -551,6 +551,16 @@
     try{ var p = new URL(String(u), location.href); return (p.protocol === 'http:' || p.protocol === 'https:') ? u : null; }
     catch(e){ return null; }
   }
+  // Forgive a missing scheme: a bare host/path (e.g. "example.com" or "example.com:8080/x") gets https://
+  // prepended so it validates. Anything already scheme://… is left for safeUrl to judge, and schemeful-but-
+  // dangerous inputs (javascript:, data:, …) are left untouched so safeUrl still rejects them.
+  function normalizeUrl(s){
+    s = (s == null ? '' : String(s)).trim();
+    if(!s) return s;
+    if(s.indexOf('://') !== -1) return s;
+    if(/^(javascript|data|vbscript|file|blob|about|mailto):/i.test(s)) return s;
+    return 'https://' + s;
+  }
 
   function applyQueryOverride(){
     try{ var q = new URLSearchParams(location.search).get('url'); var safe = q && safeUrl(q); if(safe){ state.url = safe; } }catch(e){}
@@ -1202,8 +1212,9 @@
   // Controls
   urlInput.value = state.url;
   urlInput.addEventListener('change', function(){
-    var v = safeUrl(urlInput.value.trim());
+    var v = safeUrl(normalizeUrl(urlInput.value));
     if(!v){ toast('Only http(s) URLs are allowed.'); urlInput.value = state.url; return; }
+    urlInput.value = v;   // reflect the normalised URL (e.g. https:// auto-added)
     state.url = v; saveState(); reloadAll();
   });
   document.getElementById('reload').addEventListener('click', reloadAll);
@@ -1332,7 +1343,7 @@
   var splashErr = document.getElementById('splash-err');
   var splashGo  = document.getElementById('splash-go');
   var splashHideT = null;
-  function refreshGo(){ splashGo.classList.toggle('show', !!safeUrl(splashUrl.value.trim())); }   // arrow appears only when the typed URL is valid
+  function refreshGo(){ splashGo.classList.toggle('show', !!safeUrl(normalizeUrl(splashUrl.value))); }   // arrow appears once the typed URL is valid (scheme optional — https:// auto-added)
   function showSplash(){                                  // open over the tool — at init (no URL) or via the home button
     clearTimeout(splashHideT);
     splashErr.classList.remove('show');
@@ -1352,7 +1363,7 @@
     splashHideT = setTimeout(function(){ splash.classList.remove('show','gone'); }, 450);
   }
   function submitSplash(){
-    var v = safeUrl(splashUrl.value.trim());
+    var v = safeUrl(normalizeUrl(splashUrl.value));
     if(!v){ splashErr.classList.add('show'); splashUrl.focus(); return; }   // bad/empty/non-http(s) → inline nudge, stay put
     state.url = v; urlInput.value = v; saveState();
     hideSplash();
