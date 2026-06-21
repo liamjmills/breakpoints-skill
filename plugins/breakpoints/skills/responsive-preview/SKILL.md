@@ -1,6 +1,6 @@
 ---
 name: responsive-preview
-description: Use when the user wants to preview, view, or check their website or web app across multiple device sizes — responsive testing, "show this on mobile and desktop", "open the responsive viewer", "preview breakpoints", checking how a local dev site looks at different widths.
+description: Use when the user wants to preview, view, launch, or check their website or web app — responsive testing across device sizes OR just "see it". Triggers include "launch it", "launch so i can see", "load server so i can see", "launch locally", "launch in browser", "show this on mobile and desktop", "open the responsive viewer", "preview breakpoints", checking how a local dev site looks at different widths. Keeps ONE viewer per project (reuses the running one instead of opening duplicate windows).
 ---
 
 # Responsive Preview (Breakpoints)
@@ -24,13 +24,13 @@ Opens a single-file tool (`viewer.html`) that embeds the user's **running dev se
 
 1. **Get the dev URL.** Find the user's running dev server (e.g. `http://localhost:3000`, `http://localhost:5173`, `http://127.0.0.1:8000`). Ask if unknown. It must be `http://` or `https://`. If nothing is running, help them start their dev server first.
 
-2. **Launch.** Run the bundled `launch.sh` (it sits next to this SKILL.md), passing the dev URL:
+2. **Launch.** Run the bundled `preview.sh` (it sits next to this SKILL.md), passing the dev URL. Use the absolute path to `preview.sh` in this skill's directory, and run it from the user's project directory so it keys the viewer to that project:
 
    ```bash
-   bash launch.sh http://localhost:3000
+   bash <skill-dir>/preview.sh http://localhost:3000
    ```
 
-   It picks a free port, serves `viewer.html` from this directory in the background, opens the browser at `viewer.html?url=<dev-url>`, and prints the viewer URL + the server PID (for stopping later). Use the absolute path to `launch.sh` in this skill's directory.
+   `preview.sh` is a single-instance wrapper around `launch.sh`: it keeps **one viewer per project**. If a viewer for this project is already running, it reuses it (just reopens the tab) instead of spawning another — so repeated "launch it" requests don't pile up windows. If the project's dev URL changed (port floated), it replaces the stale viewer. On a fresh launch it picks a free port, starts the proxy, serves `viewer.html`, opens the browser, and prints the viewer URL + server PID (for stopping later).
 
 3. **Report** the printed viewer URL to the user and how to stop the server (`kill <PID>`).
 
@@ -38,9 +38,10 @@ Opens a single-file tool (`viewer.html`) that embeds the user's **running dev se
 
 | Need | Do |
 |------|-----|
-| Start the viewer | `bash <skill-dir>/launch.sh <dev-url>` |
+| Start / reopen the viewer | `bash <skill-dir>/preview.sh <dev-url>` (one per project — reuses if already running) |
 | Stop it | `kill <PID>` (printed on launch) |
-| Different site | re-run `launch.sh` with the new URL |
+| Different site | re-run `preview.sh` with the new URL (replaces this project's viewer) |
+| Bypass dedup (raw launch) | `bash <skill-dir>/launch.sh <dev-url>` |
 
 ## Common Mistakes
 
