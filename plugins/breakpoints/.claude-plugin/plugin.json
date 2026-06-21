@@ -1,7 +1,7 @@
 {
   "name": "breakpoints",
   "description": "Preview your running dev site at multiple device widths side-by-side, live-reloading as you edit.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
     "name": "Liam Mills"
   },
