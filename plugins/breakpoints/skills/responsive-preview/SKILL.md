@@ -1,6 +1,6 @@
 ---
 name: responsive-preview
-description: Use when the user wants to preview, view, launch, or check their website or web app — responsive testing across device sizes OR just "see it". Triggers include "launch it", "launch so i can see", "load server so i can see", "launch locally", "launch in browser", "show this on mobile and desktop", "open the responsive viewer", "preview breakpoints", checking how a local dev site looks at different widths. Keeps ONE viewer per project (reuses the running one instead of opening duplicate windows).
+description: Use ONLY when the user explicitly wants to test or preview their site RESPONSIVELY — across multiple device widths (phone / tablet / desktop) side by side. Triggers: "test responsively", "check responsive", "check breakpoints", "preview breakpoints", "show this on mobile and desktop", "responsive preview", "preview at different widths / device sizes", "open the responsive viewer". Do NOT trigger on a plain "launch", "open", "run", "preview", or "see it" — those mean a normal single-window launch, not the breakpoints viewer. Keeps ONE viewer per project (reuses the running one instead of opening duplicate windows).
 ---
 
 # Responsive Preview (Breakpoints)
