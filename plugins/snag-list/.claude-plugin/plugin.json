@@ -1,0 +1,33 @@
+{
+  "name": "snag-list",
+  "version": "0.1.0",
+  "description": "Passively collect UI/UX niggles while building internal tools; then /snag reviews, culls, categorizes, and exports a clean set.",
+  "author": { "name": "Liam Mills" },
+  "keywords": ["ui", "ux", "internal-tools", "capture", "review", "frontend"],
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/snag-capture.js\" capture",
+            "timeout": 10,
+            "statusMessage": "Snag: capturing UI niggles"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/snag-capture.js\" session",
+            "timeout": 5,
+            "statusMessage": "Snag: welcome / check for review"
+          }
+        ]
+      }
+    ]
+  }
+}

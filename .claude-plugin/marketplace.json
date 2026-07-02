@@ -11,6 +11,13 @@
       "description": "Preview your running dev site at multiple device widths side-by-side, live-reloading as you edit.",
       "category": "frontend",
       "keywords": ["responsive", "preview", "breakpoints", "devices", "viewer", "frontend"]
+    },
+    {
+      "name": "snag-list",
+      "source": "./plugins/snag-list",
+      "description": "Collect UI/UX niggles while building internal tools; then /snag reviews, culls, categorizes, and exports a clean set.",
+      "category": "frontend",
+      "keywords": ["ui", "ux", "internal-tools", "capture", "review", "frontend"]
     }
   ]
 }
